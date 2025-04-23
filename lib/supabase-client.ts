@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 // Define user roles
 export type UserRole = "admin" | "retailer" | "wholesaler" | "delivery"
 
-// Get environment variables with fallbacks to prevent runtime errors
+// Get environment variables with fallbacks
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
@@ -15,7 +15,10 @@ const isBrowser = typeof window !== "undefined"
 if (!supabaseUrl || !supabaseAnonKey) {
   // Only log in browser to avoid SSR issues
   if (isBrowser) {
-    console.error("Missing required environment variables for Supabase client")
+    console.error(`Missing required environment variables for Supabase client:
+    NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? "Set" : "Missing"}
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: ${supabaseAnonKey ? "Set" : "Missing"}
+    `)
   }
 }
 

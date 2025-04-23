@@ -12,13 +12,21 @@ import Footer from "../components/footer"
 import { Store, Warehouse, Truck } from "lucide-react"
 import VoiceButton from "../components/voice-button"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { signUp } from "@/lib/auth-service"
+import type { UserRole } from "@/lib/supabase-client"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
 function SignupForm() {
   const { t, language } = useTranslation()
   const [step, setStep] = useState(1)
-  const [role, setRole] = useState<"retailer" | "wholesaler" | "delivery" | null>(null)
+  const [role, setRole] = useState<UserRole | null>(null)
   const [phoneNumber, setPhoneNumber] = useState("")
   const [otp, setOtp] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const router = useRouter()
 
   const handleVoiceInput = (text: string) => {
     // Clean up voice input to get only digits
@@ -30,22 +38,63 @@ function SignupForm() {
     }
   }
 
-  const sendOtp = async () => {
-    // In a real app, this would send an OTP via WhatsApp Business API
-    // For this demo, just advance to next step
-    setStep(2)
+  const handleSendOtp = async () => {
+    setIsLoading(true)
+    setError("")
+
+    try {
+      // For signup, we don't need to check if user exists
+      setStep(2)
+      toast({
+        title: "OTP Sent",
+        description: "A verification code has been sent to your WhatsApp.",
+      })
+    } catch (error) {
+      setError("An unexpected error occurred. Please try again.")
+      console.error("Error sending OTP:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const verifyOtp = async () => {
-    // In a real app, this would verify the OTP
-    // For this demo, just advance to role selection
-    setStep(3)
+  const handleVerifyOtp = async () => {
+    setIsLoading(true)
+    setError("")
+
+    try {
+      // For signup, we just verify the OTP format
+      if (otp.length === 6) {
+        setStep(3)
+      } else {
+        setError("Invalid OTP. Please enter a 6-digit code.")
+      }
+    } catch (error) {
+      setError("An unexpected error occurred. Please try again.")
+      console.error("Error verifying OTP:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const continueToOnboarding = () => {
+  const continueToOnboarding = async () => {
     if (role) {
-      // Redirect to specific onboarding flow based on role
-      window.location.href = `/onboarding/${role}`
+      try {
+        // Register the user with basic info
+        const result = await signUp({
+          phone: phoneNumber,
+          role: role,
+        })
+
+        if (result.success) {
+          // Redirect to specific onboarding flow based on role
+          router.push(`/onboarding/${role}`)
+        } else {
+          setError(result.error || "Failed to create account. Please try again.")
+        }
+      } catch (error) {
+        setError("An unexpected error occurred. Please try again.")
+        console.error("Error creating account:", error)
+      }
     }
   }
 
@@ -61,6 +110,8 @@ function SignupForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {error && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
+
           {step === 1 && (
             <>
               <div className="space-y-2">
@@ -80,11 +131,11 @@ function SignupForm() {
                 </div>
               </div>
               <Button
-                onClick={sendOtp}
+                onClick={handleSendOtp}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={phoneNumber.length !== 10}
+                disabled={phoneNumber.length !== 10 || isLoading}
               >
-                {t("send.otp")}
+                {isLoading ? "Sending..." : t("send.otp")}
               </Button>
             </>
           )}
@@ -109,12 +160,16 @@ function SignupForm() {
                 </div>
               </div>
               <Button
-                onClick={verifyOtp}
+                onClick={handleVerifyOtp}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={otp.length !== 6}
+                disabled={otp.length !== 6 || isLoading}
               >
-                {t("verify")}
+                {isLoading ? "Verifying..." : t("verify")}
               </Button>
+
+              <div className="text-center mt-4">
+                <p className="text-lg">Enter any 6 digits as OTP for demo</p>
+              </div>
             </>
           )}
 
@@ -171,9 +226,9 @@ function SignupForm() {
               <Button
                 onClick={continueToOnboarding}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={!role}
+                disabled={!role || isLoading}
               >
-                {t("continue")}
+                {isLoading ? "Processing..." : t("continue")}
               </Button>
             </>
           )}
@@ -188,6 +243,7 @@ function SignupForm() {
           </div>
         </CardContent>
       </Card>
+      <Toaster />
     </div>
   )
 }

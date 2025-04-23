@@ -5,31 +5,54 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Search, MapPin, ShoppingBag, Clock, FileText } from "lucide-react"
+import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
-
-interface Wholesaler {
-  id: string
-  name: string
-  business_name: string
-  distance: number
-  pin_code: string
-  rating: number
-}
+import { useAuth } from "@/lib/auth-context"
+import Link from "next/link"
+import { getOrdersByRetailer } from "@/lib/order-service"
+import type { Order } from "@/lib/order-service"
 
 function RetailerDashboardContent() {
   const { t } = useTranslation()
   const [pinCode, setPinCode] = useState("")
-  const [wholesalers, setWholesalers] = useState<Wholesaler[]>([])
-  const [recentOrders, setRecentOrders] = useState<any[]>([])
+  const [wholesalers, setWholesalers] = useState<any[]>([])
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const { user, logout } = useAuth()
+
+  useEffect(() => {
+    if (user) {
+      setPinCode(user.pinCode || "")
+      loadRecentOrders()
+    }
+  }, [user])
+
+  const loadRecentOrders = async () => {
+    if (!user) return
+
+    setIsLoading(true)
+    try {
+      const { data, error } = await getOrdersByRetailer(user.id)
+      if (error) {
+        console.error("Error loading orders:", error)
+      } else if (data) {
+        // Get the 3 most recent orders
+        setRecentOrders(data.slice(0, 3))
+      }
+    } catch (error) {
+      console.error("Error loading orders:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     // Mock data
-    const mockWholesalers: Wholesaler[] = [
+    const mockWholesalers = [
       {
         id: "1",
         name: "Vikram Singh",
@@ -56,25 +79,7 @@ function RetailerDashboardContent() {
       },
     ]
 
-    const mockOrders = [
-      {
-        id: "ORD001",
-        date: "2023-04-20",
-        status: "delivered",
-        total: 2450,
-        items: 12,
-      },
-      {
-        id: "ORD002",
-        date: "2023-04-15",
-        status: "dispatched",
-        total: 1250,
-        items: 5,
-      },
-    ]
-
     setWholesalers(mockWholesalers)
-    setRecentOrders(mockOrders)
   }, [])
 
   const handleSearch = () => {
@@ -87,8 +92,35 @@ function RetailerDashboardContent() {
     console.log("Using GPS to find nearby wholesalers")
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
+  }
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "placed":
+        return "bg-blue-500"
+      case "confirmed":
+        return "bg-green-500"
+      case "rejected":
+        return "bg-red-500"
+      case "dispatched":
+        return "bg-orange-500"
+      case "delivered":
+        return "bg-purple-500"
+      default:
+        return "bg-gray-500"
+    }
   }
 
   return (
@@ -97,6 +129,34 @@ function RetailerDashboardContent() {
         <h1 className="text-3xl font-bold">Retailer Dashboard</h1>
         <Button variant="outline" onClick={handleLogout}>
           Logout
+        </Button>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <Button asChild className="h-24 flex flex-col bg-blue-500 hover:bg-blue-600">
+          <Link href="/retailer/browse">
+            <ShoppingCart className="h-8 w-8 mb-2" />
+            <span>Browse Products</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-green-500 hover:bg-green-600">
+          <Link href="/retailer/orders">
+            <ShoppingBag className="h-8 w-8 mb-2" />
+            <span>My Orders</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-orange-500 hover:bg-orange-600">
+          <Link href="/chat">
+            <ShoppingBag className="h-8 w-8 mb-2" />
+            <span>Chat</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-purple-500 hover:bg-purple-600">
+          <Link href="/tax">
+            <FileText className="h-8 w-8 mb-2" />
+            <span>Tax Reports</span>
+          </Link>
         </Button>
       </div>
 
@@ -131,6 +191,62 @@ function RetailerDashboardContent() {
         </CardContent>
       </Card>
 
+      {/* Recent Orders */}
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Recent Orders</h2>
+        <Button asChild variant="outline">
+          <Link href="/retailer/orders">View All</Link>
+        </Button>
+      </div>
+      <div className="space-y-4 mb-8">
+        {isLoading ? (
+          <div className="text-center py-6">
+            <p className="text-gray-500">Loading recent orders...</p>
+          </div>
+        ) : recentOrders.length > 0 ? (
+          recentOrders.map((order) => (
+            <Card key={order.id}>
+              <CardContent className="p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="h-5 w-5 text-blue-500" />
+                      <h3 className="text-lg font-semibold">{order.order_number}</h3>
+                      <Badge className={getStatusBadgeColor(order.status)}>
+                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="h-4 w-4 text-gray-500" />
+                      <span className="text-gray-500">{formatDate(order.created_at)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold">₹{order.total_amount.toFixed(2)}</p>
+                    <p className="text-gray-500">{order.items?.length || 0} items</p>
+                  </div>
+                  <div>
+                    <Button asChild variant="outline" size="sm" className="text-sm whitespace-nowrap">
+                      <Link href={`/retailer/orders?id=${order.id}`}>
+                        <FileText className="mr-1 h-4 w-4" />
+                        Details
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <div className="text-center py-6">
+            <p className="text-gray-500">No recent orders. Start shopping to see your orders here.</p>
+            <Button asChild className="mt-4 bg-blue-500 hover:bg-blue-600">
+              <Link href="/retailer/browse">Browse Products</Link>
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Wholesalers List */}
       <h2 className="text-2xl font-bold mb-4">Nearby Wholesalers</h2>
       <div className="space-y-4 mb-8">
@@ -162,53 +278,9 @@ function RetailerDashboardContent() {
                   </div>
                 </div>
                 <div className="p-6 bg-gray-50 flex items-center justify-center">
-                  <Button className="h-14 px-6 bg-blue-500 hover:bg-blue-600">View Catalog</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Recent Orders */}
-      <h2 className="text-2xl font-bold mb-4">Recent Orders</h2>
-      <div className="space-y-4 mb-8">
-        {recentOrders.map((order) => (
-          <Card key={order.id}>
-            <CardContent className="p-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ShoppingBag className="h-5 w-5 text-blue-500" />
-                    <h3 className="text-lg font-semibold">{order.id}</h3>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Clock className="h-4 w-4 text-gray-500" />
-                    <span className="text-gray-500">{order.date}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold">₹{order.total}</p>
-                  <p className="text-gray-500">{order.items} items</p>
-                </div>
-                <div>
-                  <Badge
-                    className={
-                      order.status === "delivered"
-                        ? "bg-green-500"
-                        : order.status === "dispatched"
-                          ? "bg-orange-500"
-                          : "bg-blue-500"
-                    }
-                  >
-                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                  </Badge>
-                  <div className="mt-2">
-                    <Button variant="outline" size="sm" className="text-sm whitespace-nowrap">
-                      <FileText className="mr-1 h-4 w-4" />
-                      Invoice
-                    </Button>
-                  </div>
+                  <Button asChild className="h-14 px-6 bg-blue-500 hover:bg-blue-600">
+                    <Link href={`/retailer/browse?wholesaler=${wholesaler.id}`}>View Catalog</Link>
+                  </Button>
                 </div>
               </div>
             </CardContent>

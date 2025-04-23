@@ -5,51 +5,63 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { ShoppingBag, Clock, Plus, FileText, Package, CreditCard, ShoppingCart, User } from "lucide-react"
+import { ShoppingBag, Clock, FileText, Package, CreditCard, ShoppingCart, User } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import Link from "next/link"
+import { getOrdersByWholesaler } from "@/lib/order-service"
+import type { Order } from "@/lib/order-service"
 
 function WholesalerDashboardContent() {
   const { t } = useTranslation()
   const [orderCount, setOrderCount] = useState(0)
-  const [pendingOrders, setPendingOrders] = useState<any[]>([])
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([])
   const [activeTab, setActiveTab] = useState("orders")
   const router = useRouter()
+  const { user, logout } = useAuth()
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Mock data
-    const mockOrders = [
-      {
-        id: "ORD003",
-        date: "2023-04-22",
-        status: "placed",
-        total: 3250,
-        items: 15,
-        retailer: {
-          name: "Raj Kumar",
-          business: "Raj Grocery Store",
-        },
-      },
-      {
-        id: "ORD004",
-        date: "2023-04-21",
-        status: "placed",
-        total: 1750,
-        items: 8,
-        retailer: {
-          name: "Ajay Sharma",
-          business: "Ajay General Store",
-        },
-      },
-    ]
+    if (user) {
+      loadOrders()
+    }
+  }, [user])
 
-    setPendingOrders(mockOrders)
-    setOrderCount(mockOrders.length)
-  }, [])
+  const loadOrders = async () => {
+    if (!user) return
 
-  const handleLogout = () => {
+    setIsLoading(true)
+    try {
+      const { data, error } = await getOrdersByWholesaler(user.id)
+      if (error) {
+        console.error("Error loading orders:", error)
+      } else if (data) {
+        // Filter for pending orders
+        const pending = data.filter((order) => order.status === "placed")
+        setPendingOrders(pending)
+        setOrderCount(pending.length)
+      }
+    } catch (error) {
+      console.error("Error loading orders:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
   }
 
   return (
@@ -112,11 +124,31 @@ function WholesalerDashboardContent() {
         </Card>
       </div>
 
-      {/* Add Product Button */}
-      <div className="flex justify-end mb-6">
-        <Button className="h-12 bg-blue-500 hover:bg-blue-600">
-          <Plus className="mr-2 h-5 w-5" />
-          Add Product
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <Button asChild className="h-24 flex flex-col bg-blue-500 hover:bg-blue-600">
+          <Link href="/wholesaler/orders">
+            <ShoppingBag className="h-8 w-8 mb-2" />
+            <span>Manage Orders</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-orange-500 hover:bg-orange-600">
+          <Link href="/wholesaler/products">
+            <Package className="h-8 w-8 mb-2" />
+            <span>Manage Products</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-green-500 hover:bg-green-600">
+          <Link href="/chat">
+            <ShoppingBag className="h-8 w-8 mb-2" />
+            <span>Chat</span>
+          </Link>
+        </Button>
+        <Button asChild className="h-24 flex flex-col bg-purple-500 hover:bg-purple-600">
+          <Link href="/tax">
+            <FileText className="h-8 w-8 mb-2" />
+            <span>Tax Reports</span>
+          </Link>
         </Button>
       </div>
 
@@ -144,10 +176,19 @@ function WholesalerDashboardContent() {
         <TabsContent value="orders" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Pending Orders</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-2xl">Pending Orders</CardTitle>
+                <Button asChild variant="outline">
+                  <Link href="/wholesaler/orders">View All Orders</Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {pendingOrders.length > 0 ? (
+              {isLoading ? (
+                <div className="text-center py-6">
+                  <p className="text-gray-500">Loading pending orders...</p>
+                </div>
+              ) : pendingOrders.length > 0 ? (
                 <div className="space-y-4">
                   {pendingOrders.map((order) => (
                     <Card key={order.id}>
@@ -156,34 +197,34 @@ function WholesalerDashboardContent() {
                           <div>
                             <div className="flex items-center gap-2">
                               <ShoppingBag className="h-5 w-5 text-blue-500" />
-                              <h3 className="text-lg font-semibold">{order.id}</h3>
+                              <h3 className="text-lg font-semibold">{order.order_number}</h3>
                               <Badge className="bg-blue-500">New</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <Clock className="h-4 w-4 text-gray-500" />
-                              <span className="text-gray-500">{order.date}</span>
+                              <span className="text-gray-500">{formatDate(order.created_at)}</span>
                             </div>
                             <div className="mt-2">
-                              <p className="font-medium">{order.retailer.business}</p>
-                              <p className="text-gray-500">{order.retailer.name}</p>
+                              <p className="font-medium">Retailer: {order.retailer_name}</p>
                             </div>
                           </div>
 
                           <div className="text-center md:text-right">
-                            <p className="text-lg font-semibold">₹{order.total}</p>
-                            <p className="text-gray-500">{order.items} items</p>
+                            <p className="text-lg font-semibold">₹{order.total_amount.toFixed(2)}</p>
+                            <p className="text-gray-500">{order.items?.length || 0} items</p>
                             <div className="flex gap-2 mt-2">
-                              <Button size="sm" variant="outline" className="whitespace-nowrap">
-                                <ShoppingCart className="mr-1 h-4 w-4" />
-                                View Items
+                              <Button asChild size="sm" variant="outline" className="whitespace-nowrap">
+                                <Link href={`/wholesaler/orders?id=${order.id}`}>
+                                  <ShoppingCart className="mr-1 h-4 w-4" />
+                                  View Items
+                                </Link>
                               </Button>
                             </div>
                           </div>
 
                           <div className="flex flex-col gap-2 w-full md:w-auto">
-                            <Button className="bg-blue-500 hover:bg-blue-600">Accept Order</Button>
-                            <Button variant="outline" className="text-red-500 border-red-500 hover:bg-red-50">
-                              Reject Order
+                            <Button asChild className="bg-blue-500 hover:bg-blue-600">
+                              <Link href={`/wholesaler/orders?id=${order.id}`}>Manage Order</Link>
                             </Button>
                           </div>
                         </div>
@@ -206,8 +247,16 @@ function WholesalerDashboardContent() {
               <CardTitle className="text-2xl">Product Catalog</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-8 text-center text-gray-500">
-                <p>Your product catalog will appear here.</p>
+              <div className="flex justify-center mb-6">
+                <Button asChild className="bg-blue-500 hover:bg-blue-600">
+                  <Link href="/wholesaler/products">
+                    <Package className="mr-2 h-5 w-5" />
+                    Manage Products
+                  </Link>
+                </Button>
+              </div>
+              <div className="text-center text-gray-500">
+                <p>Manage your product catalog to make them available to retailers.</p>
               </div>
             </CardContent>
           </Card>

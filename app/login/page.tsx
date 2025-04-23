@@ -11,6 +11,10 @@ import Footer from "../components/footer"
 import VoiceButton from "../components/voice-button"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { sendOtp, verifyOtp } from "@/lib/auth-service"
+import { useAuth } from "@/lib/auth-context"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
 function LoginForm() {
   const { t, language } = useTranslation()
@@ -20,6 +24,7 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
+  const { setUser } = useAuth()
 
   const handleVoiceInput = (text: string) => {
     // Clean up voice input to get only digits
@@ -31,66 +36,62 @@ function LoginForm() {
     }
   }
 
-  const sendOtp = async () => {
+  const handleSendOtp = async () => {
     setIsLoading(true)
     setError("")
 
     try {
-      // In a real app, this would send an OTP via WhatsApp Business API
-      // For demo, let's simulate checking if the user exists
+      const result = await sendOtp(phoneNumber)
 
-      // For demo login purposes
-      if (phoneNumber === "1234567890") {
-        // Demo admin user
+      if (result.success) {
         setStep(2)
-      } else if (phoneNumber === "9876543210") {
-        // Demo retailer user
-        setStep(2)
-      } else if (phoneNumber === "9876543211") {
-        // Demo wholesaler user
-        setStep(2)
-      } else if (phoneNumber === "9876543212") {
-        // Demo delivery partner user
-        setStep(2)
+        toast({
+          title: "OTP Sent",
+          description: "A verification code has been sent to your WhatsApp.",
+        })
       } else {
-        setError("No account found with this phone number. Please sign up first.")
+        setError(result.error || "Failed to send OTP. Please try again.")
       }
     } catch (error) {
-      setError("Failed to send OTP. Please try again.")
+      setError("An unexpected error occurred. Please try again.")
       console.error("Error sending OTP:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const verifyOtp = async () => {
+  const handleVerifyOtp = async () => {
     setIsLoading(true)
     setError("")
 
     try {
-      // In a real app, this would verify the OTP
-      // For demo login purposes, use any 6-digit OTP
+      const result = await verifyOtp({ phone: phoneNumber, otp })
 
-      if (otp.length === 6) {
-        // Demo login based on phone number
-        if (phoneNumber === "1234567890") {
-          // Admin user
+      if (result.success && result.userData) {
+        // Store user data
+        localStorage.setItem("currentUser", JSON.stringify(result.userData))
+        setUser(result.userData)
+
+        // Redirect based on role
+        if (result.userData.role === "admin") {
           router.push("/admin/dashboard")
-        } else if (phoneNumber === "9876543210") {
-          // Retailer user
+        } else if (result.userData.role === "retailer") {
           router.push("/retailer/dashboard")
-        } else if (phoneNumber === "9876543211") {
-          // Wholesaler user
+        } else if (result.userData.role === "wholesaler") {
           router.push("/wholesaler/dashboard")
-        } else if (phoneNumber === "9876543212") {
-          // Delivery partner user
+        } else if (result.userData.role === "delivery") {
           router.push("/delivery/dashboard")
         }
+
+        toast({
+          title: "Login Successful",
+          description: "You have been logged in successfully.",
+        })
       } else {
-        setError("Invalid OTP. Please try again.")
+        setError(result.error || "Failed to verify OTP. Please try again.")
       }
     } catch (error) {
-      setError("Failed to verify OTP. Please try again.")
+      setError("An unexpected error occurred. Please try again.")
       console.error("Error verifying OTP:", error)
     } finally {
       setIsLoading(false)
@@ -129,7 +130,7 @@ function LoginForm() {
                 </div>
               </div>
               <Button
-                onClick={sendOtp}
+                onClick={handleSendOtp}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
                 disabled={phoneNumber.length !== 10 || isLoading}
               >
@@ -166,7 +167,7 @@ function LoginForm() {
                 </div>
               </div>
               <Button
-                onClick={verifyOtp}
+                onClick={handleVerifyOtp}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
                 disabled={otp.length !== 6 || isLoading}
               >
@@ -189,6 +190,7 @@ function LoginForm() {
           </div>
         </CardContent>
       </Card>
+      <Toaster />
     </div>
   )
 }

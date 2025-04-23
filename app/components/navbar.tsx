@@ -3,15 +3,48 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import LanguageToggle from "./language-toggle"
-import { Home, ShoppingBag, MessageSquare, FileText, Menu } from "lucide-react"
+import { Home, ShoppingBag, MessageSquare, FileText, Menu, User } from "lucide-react"
 import { useState } from "react"
 import { usePathname } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pathname = usePathname()
+  const { user, logout } = useAuth()
 
   const isActive = (path: string) => pathname === path
+
+  const handleLogout = async () => {
+    await logout()
+    window.location.href = "/"
+  }
+
+  // Determine dashboard link based on user role
+  const getDashboardLink = () => {
+    if (!user) return "/login"
+
+    switch (user.role) {
+      case "admin":
+        return "/admin/dashboard"
+      case "retailer":
+        return "/retailer/dashboard"
+      case "wholesaler":
+        return "/wholesaler/dashboard"
+      case "delivery":
+        return "/delivery/dashboard"
+      default:
+        return "/login"
+    }
+  }
 
   return (
     <>
@@ -33,12 +66,37 @@ export default function Navbar() {
             </Button>
 
             <div className="hidden md:flex space-x-4">
-              <Button asChild variant="ghost" className="text-lg font-medium">
-                <Link href="/login">Login</Link>
-              </Button>
-              <Button asChild className="text-lg font-medium bg-blue-500 hover:bg-blue-600">
-                <Link href="/signup">Join Now</Link>
-              </Button>
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="text-lg font-medium flex items-center gap-2">
+                      <User className="h-5 w-5" />
+                      {user.name || user.phone}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href={getDashboardLink()}>Dashboard</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile">Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <>
+                  <Button asChild variant="ghost" className="text-lg font-medium">
+                    <Link href="/login">Login</Link>
+                  </Button>
+                  <Button asChild className="text-lg font-medium bg-blue-500 hover:bg-blue-600">
+                    <Link href="/signup">Join Now</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -46,12 +104,31 @@ export default function Navbar() {
         {mobileMenuOpen && (
           <div className="md:hidden bg-white p-4 border-b">
             <div className="flex flex-col space-y-2">
-              <Button asChild variant="ghost" className="text-lg font-medium justify-start">
-                <Link href="/login">Login</Link>
-              </Button>
-              <Button asChild className="text-lg font-medium bg-blue-500 hover:bg-blue-600">
-                <Link href="/signup">Join Now</Link>
-              </Button>
+              {user ? (
+                <>
+                  <div className="px-2 py-1 text-sm text-gray-500">
+                    Signed in as <span className="font-semibold">{user.name || user.phone}</span>
+                  </div>
+                  <Button asChild variant="ghost" className="text-lg font-medium justify-start">
+                    <Link href={getDashboardLink()}>Dashboard</Link>
+                  </Button>
+                  <Button asChild variant="ghost" className="text-lg font-medium justify-start">
+                    <Link href="/profile">Profile</Link>
+                  </Button>
+                  <Button variant="ghost" className="text-lg font-medium justify-start" onClick={handleLogout}>
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild variant="ghost" className="text-lg font-medium justify-start">
+                    <Link href="/login">Login</Link>
+                  </Button>
+                  <Button asChild className="text-lg font-medium bg-blue-500 hover:bg-blue-600">
+                    <Link href="/signup">Join Now</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}

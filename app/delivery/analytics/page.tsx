@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context"
 import { type DateRange, getAnalyticsDashboard, type AnalyticsDashboard } from "@/lib/analytics-service"
 import { DateRangeSelector } from "@/app/components/date-range-selector"
 import { DeliveryMetricsCard } from "@/app/components/delivery-metrics-card"
+import { ExportOptions } from "@/app/components/export-options"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -94,14 +95,20 @@ export default function DeliveryAnalyticsPage() {
           <p className="text-muted-foreground">Track your delivery performance and earnings</p>
         </div>
 
-        <DateRangeSelector
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-          startDate={startDate}
-          endDate={endDate}
-          setStartDate={setStartDate}
-          setEndDate={setEndDate}
-        />
+        <div className="flex flex-col md:flex-row gap-2">
+          <DateRangeSelector
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+          />
+
+          {analytics && !isLoading && (
+            <ExportOptions analytics={analytics} dateRange={dateRange} userRole={user.role} activeTab={activeTab} />
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>

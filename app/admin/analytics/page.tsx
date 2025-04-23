@@ -11,6 +11,7 @@ import { CustomerMetricsCard } from "@/app/components/customer-metrics-card"
 import { DeliveryMetricsCard } from "@/app/components/delivery-metrics-card"
 import { InventoryMetricsCard } from "@/app/components/inventory-metrics-card"
 import { TaxMetricsCard } from "@/app/components/tax-metrics-card"
+import { ExportOptions } from "@/app/components/export-options"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -57,14 +58,20 @@ export default function AdminAnalyticsPage() {
           <p className="text-muted-foreground">Comprehensive analytics for the entire RetailBandhu platform</p>
         </div>
 
-        <DateRangeSelector
-          dateRange={dateRange}
-          setDateRange={setDateRange}
-          startDate={startDate}
-          endDate={endDate}
-          setStartDate={setStartDate}
-          setEndDate={setEndDate}
-        />
+        <div className="flex flex-col md:flex-row gap-2">
+          <DateRangeSelector
+            dateRange={dateRange}
+            setDateRange={setDateRange}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+          />
+
+          {analytics && !isLoading && (
+            <ExportOptions analytics={analytics} dateRange={dateRange} userRole={user.role} activeTab={activeTab} />
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>

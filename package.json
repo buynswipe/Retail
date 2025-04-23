@@ -68,6 +68,7 @@
     "expo": "latest",
     "react-native-vector-icons": "latest",
     "react-native-svg": "latest",
+    "jspdf": "latest",
     "country-flag-icons": "latest",
     "@supabase/supabase-js": "latest",
     "@react-navigation/native-stack": "latest",
@@ -77,7 +78,8 @@
     "react-native-url-polyfill": "latest",
     "react-native-paper": "latest",
     "lucide-react-native": "latest",
-    "@react-navigation/bottom-tabs": "latest"
+    "@react-navigation/bottom-tabs": "latest",
+    "jspdf-autotable": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

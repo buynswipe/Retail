@@ -1,12 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { AlertTriangle } from "lucide-react"
 
 export default function EnvSetup() {
-  const [isSetup, setIsSetup] = useState(true) // Default to true to avoid flashing error message
   const [missingVars, setMissingVars] = useState<string[]>([])
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
+    setIsClient(true)
+
     // Check if environment variables are set
     const requiredVars = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]
 
@@ -16,25 +19,35 @@ export default function EnvSetup() {
     })
 
     if (missing.length > 0) {
-      setIsSetup(false)
+      console.error(`Missing environment variables: ${missing.join(", ")}`)
       setMissingVars(missing)
-      console.error(`Environment variables not set: ${missing.join(", ")}`)
-    } else {
-      setIsSetup(true)
     }
   }, [])
 
-  if (isSetup) {
+  // Only show the error on client-side to avoid hydration issues
+  if (!isClient || missingVars.length === 0) {
     return null
   }
 
   return (
     <div className="fixed inset-0 bg-red-500 bg-opacity-90 z-50 flex items-center justify-center text-white p-4">
-      <div className="max-w-md text-center">
+      <div className="max-w-md text-center bg-white text-red-600 p-6 rounded-lg shadow-lg">
+        <div className="flex justify-center mb-4">
+          <AlertTriangle size={48} />
+        </div>
         <h1 className="text-2xl font-bold mb-4">Environment Setup Required</h1>
-        <p className="mb-4">Please set the following environment variables:</p>
-        <pre className="bg-red-700 p-4 rounded text-left mb-4 overflow-auto">{missingVars.join("\n")}</pre>
-        <p>Then restart your development server.</p>
+        <p className="mb-4">The following environment variables are missing:</p>
+        <ul className="bg-red-50 p-4 rounded text-left mb-4 overflow-auto">
+          {missingVars.map((varName) => (
+            <li key={varName} className="font-mono">
+              {varName}
+            </li>
+          ))}
+        </ul>
+        <p className="mb-4">Please add these variables to your Vercel project settings or .env.local file.</p>
+        <p className="text-sm text-gray-600">
+          After adding the variables, redeploy your application or restart your development server.
+        </p>
       </div>
     </div>
   )

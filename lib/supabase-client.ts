@@ -3,11 +3,37 @@ import { createClient } from "@supabase/supabase-js"
 // Define user roles
 export type UserRole = "admin" | "retailer" | "wholesaler" | "delivery"
 
+// Get environment variables with fallbacks to prevent runtime errors
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+
+// Check if we're in a browser environment
+const isBrowser = typeof window !== "undefined"
+
+// Validate required environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Only log in browser to avoid SSR issues
+  if (isBrowser) {
+    console.error("Missing required environment variables for Supabase client")
+  }
+}
+
 // Supabase client
-export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+})
 
 // Supabase admin client (for server-side operations)
-export const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: true,
+  },
+})
 
 // Database types
 export interface User {

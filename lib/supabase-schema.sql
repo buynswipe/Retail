@@ -90,6 +90,22 @@ CREATE TABLE IF NOT EXISTS delivery_assignments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Payments Table
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID NOT NULL REFERENCES orders(id),
+  amount DECIMAL(10,2) NOT NULL,
+  payment_method VARCHAR(10) NOT NULL CHECK (payment_method IN ('cod', 'upi')),
+  payment_status VARCHAR(20) NOT NULL CHECK (payment_status IN ('pending', 'completed', 'failed')),
+  transaction_id VARCHAR(100),
+  reference_id VARCHAR(20) NOT NULL,
+  upi_id VARCHAR(50),
+  payment_date TIMESTAMP WITH TIME ZONE,
+  collected_by UUID REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Messages Table
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -139,6 +155,7 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delivery_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
@@ -177,15 +194,28 @@ CREATE POLICY orders_read_involved ON orders
     )
   );
 
+-- Payments can be read by the involved parties
+CREATE POLICY payments_read_involved ON payments
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM orders 
+      WHERE id = payments.order_id AND (retailer_id = auth.uid() OR wholesaler_id = auth.uid())
+    ) OR
+    collected_by = auth.uid() OR
+    EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
 -- Create functions for authentication
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $
 BEGIN
   INSERT INTO public.users (id, phone_number, role)
   VALUES (new.id, new.phone, 'retailer');
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create trigger for new user signup
 CREATE TRIGGER on_auth_user_created

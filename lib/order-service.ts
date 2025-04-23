@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-client"
 import type { Product } from "./product-service"
+import { createDeliveryAssignment } from "./delivery-service"
 
 export interface OrderItem {
   id: string
@@ -273,7 +274,38 @@ export async function updateOrderStatus(
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", orderId)
 
-    return { success: !error, error }
+    if (error) {
+      return { success: false, error }
+    }
+
+    // If status is "dispatched", create a delivery assignment
+    if (status === "dispatched") {
+      // Get order details to get delivery charge
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("delivery_charge, delivery_charge_gst")
+        .eq("id", orderId)
+        .single()
+
+      if (orderError) {
+        console.error("Error fetching order for delivery assignment:", orderError)
+        return { success: true, error: null } // Still return success for order update
+      }
+
+      // Create delivery assignment
+      const { error: assignmentError } = await createDeliveryAssignment({
+        order_id: orderId,
+        delivery_charge: order.delivery_charge,
+        delivery_charge_gst: order.delivery_charge_gst,
+      })
+
+      if (assignmentError) {
+        console.error("Error creating delivery assignment:", assignmentError)
+        return { success: true, error: null } // Still return success for order update
+      }
+    }
+
+    return { success: true, error: null }
   } catch (error) {
     console.error("Error updating order status:", error)
     return { success: false, error }

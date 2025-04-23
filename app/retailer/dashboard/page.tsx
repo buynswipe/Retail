@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart } from "lucide-react"
+import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart, CreditCard } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -147,15 +147,15 @@ function RetailerDashboardContent() {
           </Link>
         </Button>
         <Button asChild className="h-24 flex flex-col bg-orange-500 hover:bg-orange-600">
-          <Link href="/chat">
-            <ShoppingBag className="h-8 w-8 mb-2" />
-            <span>Chat</span>
+          <Link href="/retailer/payments">
+            <CreditCard className="h-8 w-8 mb-2" />
+            <span>Payments</span>
           </Link>
         </Button>
         <Button asChild className="h-24 flex flex-col bg-purple-500 hover:bg-purple-600">
-          <Link href="/tax">
+          <Link href="/chat">
             <FileText className="h-8 w-8 mb-2" />
-            <span>Tax Reports</span>
+            <span>Chat</span>
           </Link>
         </Button>
       </div>

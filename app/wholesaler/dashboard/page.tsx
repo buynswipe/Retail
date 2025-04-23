@@ -139,15 +139,15 @@ function WholesalerDashboardContent() {
           </Link>
         </Button>
         <Button asChild className="h-24 flex flex-col bg-green-500 hover:bg-green-600">
-          <Link href="/chat">
-            <ShoppingBag className="h-8 w-8 mb-2" />
-            <span>Chat</span>
+          <Link href="/wholesaler/payments">
+            <CreditCard className="h-8 w-8 mb-2" />
+            <span>Payments</span>
           </Link>
         </Button>
         <Button asChild className="h-24 flex flex-col bg-purple-500 hover:bg-purple-600">
-          <Link href="/tax">
+          <Link href="/chat">
             <FileText className="h-8 w-8 mb-2" />
-            <span>Tax Reports</span>
+            <span>Chat</span>
           </Link>
         </Button>
       </div>
@@ -265,11 +265,24 @@ function WholesalerDashboardContent() {
         <TabsContent value="payments" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Payment History</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-2xl">Payment History</CardTitle>
+                <Button asChild variant="outline">
+                  <Link href="/wholesaler/payments">View All Payments</Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="p-8 text-center text-gray-500">
-                <p>Your payment history will appear here.</p>
+              <div className="flex justify-center mb-6">
+                <Button asChild className="bg-green-500 hover:bg-green-600">
+                  <Link href="/wholesaler/payments">
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    View Payments
+                  </Link>
+                </Button>
+              </div>
+              <div className="text-center text-gray-500">
+                <p>Track your payments and earnings from all orders.</p>
               </div>
             </CardContent>
           </Card>

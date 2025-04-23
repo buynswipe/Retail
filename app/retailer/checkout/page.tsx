@@ -5,25 +5,41 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Package, CreditCard, Truck, CheckCircle, ArrowLeft } from "lucide-react"
+import { Package, CreditCard, Truck, CheckCircle, ArrowLeft, AlertCircle } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useCart } from "@/lib/cart-context"
 import { createOrder } from "@/lib/order-service"
+import { createPayment, verifyUpiPayment } from "@/lib/payment-service"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 function CheckoutContent() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const { items, wholesalerId, wholesalerName, totalItems, totalAmount, clearCart } = useCart()
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "upi">("cod")
+  const [upiId, setUpiId] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [orderNumber, setOrderNumber] = useState("")
+  const [showUpiDialog, setShowUpiDialog] = useState(false)
+  const [paymentId, setPaymentId] = useState("")
+  const [transactionId, setTransactionId] = useState("")
+  const [upiVerifying, setUpiVerifying] = useState(false)
   const router = useRouter()
 
   // Redirect if cart is empty
@@ -47,8 +63,19 @@ function CheckoutContent() {
 
     setIsProcessing(true)
     try {
+      // Validate UPI ID if UPI payment method is selected
+      if (paymentMethod === "upi" && !upiId) {
+        toast({
+          title: "Error",
+          description: "Please enter your UPI ID",
+          variant: "destructive",
+        })
+        setIsProcessing(false)
+        return
+      }
+
       // Prepare order data
-      const orderData = {
+      const orderDataPayload = {
         retailer_id: user.id,
         wholesaler_id: wholesalerId,
         payment_method: paymentMethod,
@@ -61,16 +88,37 @@ function CheckoutContent() {
       }
 
       // Create order
-      const { data, error } = await createOrder(orderData)
+      const { data: orderData, error: orderError } = await createOrder(orderDataPayload)
 
-      if (error) {
-        throw error
+      if (orderError) {
+        throw orderError
       }
 
-      // Show success message
-      setIsSuccess(true)
-      setOrderNumber(data?.order_number || "")
-      clearCart()
+      // Create payment record
+      const { data: paymentData, error: paymentError } = await createPayment({
+        order_id: orderData!.id,
+        amount: orderData!.total_amount,
+        payment_method: paymentMethod,
+        upi_id: paymentMethod === "upi" ? upiId : undefined,
+      })
+
+      if (paymentError) {
+        throw paymentError
+      }
+
+      // If UPI payment, show UPI payment dialog
+      if (paymentMethod === "upi") {
+        setPaymentId(paymentData!.id)
+        setShowUpiDialog(true)
+        setOrderNumber(orderData!.order_number)
+        setIsProcessing(false)
+      } else {
+        // For COD, show success message directly
+        setIsSuccess(true)
+        setOrderNumber(orderData!.order_number)
+        clearCart()
+        setIsProcessing(false)
+      }
     } catch (error) {
       console.error("Error placing order:", error)
       toast({
@@ -78,8 +126,44 @@ function CheckoutContent() {
         description: "Failed to place order. Please try again.",
         variant: "destructive",
       })
-    } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const handleVerifyUpiPayment = async () => {
+    if (!transactionId) {
+      toast({
+        title: "Error",
+        description: "Please enter the transaction ID",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setUpiVerifying(true)
+    try {
+      const { success, error } = await verifyUpiPayment({
+        payment_id: paymentId,
+        transaction_id: transactionId,
+      })
+
+      if (!success) {
+        throw error
+      }
+
+      // Close dialog and show success message
+      setShowUpiDialog(false)
+      setIsSuccess(true)
+      clearCart()
+    } catch (error) {
+      console.error("Error verifying UPI payment:", error)
+      toast({
+        title: "Error",
+        description: "Failed to verify payment. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setUpiVerifying(false)
     }
   }
 
@@ -215,6 +299,22 @@ function CheckoutContent() {
                       </Label>
                     </div>
                   </RadioGroup>
+
+                  {paymentMethod === "upi" && (
+                    <div className="mt-4">
+                      <Label htmlFor="upi-id">UPI ID</Label>
+                      <Input
+                        id="upi-id"
+                        placeholder="yourname@upi"
+                        value={upiId}
+                        onChange={(e) => setUpiId(e.target.value)}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enter your UPI ID to make payment (e.g., yourname@okaxis)
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -229,6 +329,64 @@ function CheckoutContent() {
           </div>
         </>
       )}
+
+      {/* UPI Payment Dialog */}
+      <Dialog open={showUpiDialog} onOpenChange={setShowUpiDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete UPI Payment</DialogTitle>
+            <DialogDescription>
+              Please complete the payment using your UPI app and enter the transaction ID below.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Payment Instructions</AlertTitle>
+              <AlertDescription>
+                <ol className="list-decimal pl-4 space-y-2 mt-2">
+                  <li>Open your UPI app (Google Pay, PhonePe, Paytm, etc.)</li>
+                  <li>Send ₹{(totalAmount + 50).toFixed(2)} to retailbandhu@okaxis</li>
+                  <li>Copy the transaction ID from your UPI app</li>
+                  <li>Paste the transaction ID below and click Verify</li>
+                </ol>
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-2">
+              <Label htmlFor="transaction-id">Transaction ID</Label>
+              <Input
+                id="transaction-id"
+                placeholder="Enter UPI transaction ID"
+                value={transactionId}
+                onChange={(e) => setTransactionId(e.target.value)}
+              />
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-md">
+              <p className="text-sm font-medium">Order Details</p>
+              <p className="text-sm text-gray-500">Order #{orderNumber}</p>
+              <p className="text-sm text-gray-500">Amount: ₹{(totalAmount + 50).toFixed(2)}</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUpiDialog(false)
+                router.push("/retailer/orders")
+              }}
+            >
+              Pay Later
+            </Button>
+            <Button onClick={handleVerifyUpiPayment} disabled={upiVerifying} className="bg-blue-500 hover:bg-blue-600">
+              {upiVerifying ? "Verifying..." : "Verify Payment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Toaster />
     </div>

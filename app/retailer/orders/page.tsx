@@ -5,11 +5,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { ShoppingBag, Clock, FileText, Eye, Search, X } from "lucide-react"
+import { ShoppingBag, Clock, FileText, Eye, Search, X, Truck, Phone } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth-context"
 import { getOrdersByRetailer, getOrderById } from "@/lib/order-service"
 import type { Order, OrderItem } from "@/lib/order-service"
+import { getDeliveryAssignmentByOrderId } from "@/lib/delivery-service"
+import type { DeliveryAssignment } from "@/lib/delivery-service"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
@@ -25,6 +27,7 @@ function OrdersContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedDelivery, setSelectedDelivery] = useState<DeliveryAssignment | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -57,11 +60,22 @@ function OrdersContent() {
 
   const handleViewOrder = async (orderId: string) => {
     try {
-      const { data, error } = await getOrderById(orderId)
-      if (error) {
-        throw error
+      const { data: orderData, error: orderError } = await getOrderById(orderId)
+      if (orderError) {
+        throw orderError
       }
-      setSelectedOrder(data)
+      setSelectedOrder(orderData)
+
+      // If order is dispatched or delivered, get delivery information
+      if (orderData?.status === "dispatched" || orderData?.status === "delivered") {
+        const { data: deliveryData, error: deliveryError } = await getDeliveryAssignmentByOrderId(orderId)
+        if (!deliveryError) {
+          setSelectedDelivery(deliveryData)
+        }
+      } else {
+        setSelectedDelivery(null)
+      }
+
       setIsDialogOpen(true)
     } catch (error) {
       console.error("Error loading order details:", error)
@@ -275,6 +289,58 @@ function OrdersContent() {
                   </div>
                 </div>
               </div>
+
+              {/* Delivery Information */}
+              {selectedDelivery && (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <h3 className="font-semibold mb-2 flex items-center">
+                    <Truck className="h-5 w-5 mr-2 text-blue-500" />
+                    Delivery Information
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      <span className="text-gray-500">Status:</span>{" "}
+                      <Badge
+                        className={
+                          selectedDelivery.status === "completed"
+                            ? "bg-green-500"
+                            : selectedDelivery.status === "accepted"
+                              ? "bg-orange-500"
+                              : "bg-blue-500"
+                        }
+                      >
+                        {selectedDelivery.status.charAt(0).toUpperCase() + selectedDelivery.status.slice(1)}
+                      </Badge>
+                    </p>
+                    {selectedDelivery.delivery_partner_name && (
+                      <>
+                        <p>
+                          <span className="text-gray-500">Delivery Partner:</span>{" "}
+                          {selectedDelivery.delivery_partner_name}
+                        </p>
+                        {selectedDelivery.delivery_partner_phone && (
+                          <p>
+                            <span className="text-gray-500">Contact:</span>{" "}
+                            <a
+                              href={`tel:${selectedDelivery.delivery_partner_phone}`}
+                              className="text-blue-500 flex items-center inline-flex"
+                            >
+                              {selectedDelivery.delivery_partner_phone} <Phone className="h-3 w-3 ml-1" />
+                            </a>
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {selectedDelivery.status === "accepted" && selectedDelivery.otp && (
+                      <p>
+                        <span className="text-gray-500">Verification OTP:</span>{" "}
+                        <span className="font-bold">{selectedDelivery.otp}</span>{" "}
+                        <span className="text-xs text-gray-500">(Share with delivery partner upon delivery)</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h3 className="font-semibold mb-2">Order Items</h3>

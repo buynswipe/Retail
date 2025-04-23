@@ -2,29 +2,36 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
-
   try {
+    const res = NextResponse.next()
+    const supabase = createMiddlewareClient({ req, res })
+
     // Check if user is authenticated
     const {
       data: { session },
+      error: sessionError,
     } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      console.error("Session error in middleware:", sessionError.message)
+      return res
+    }
 
     // Get the pathname from the URL
     const path = req.nextUrl.pathname
 
     // Public routes that don't require authentication
-    const publicRoutes = ["/", "/login", "/signup", "/about", "/contact", "/privacy", "/terms"]
+    const publicRoutes = ["/", "/login", "/signup", "/about", "/contact", "/privacy", "/terms", "/api/health"]
 
-    // Check if the current path is a public route
-    const isPublicRoute = publicRoutes.some(
-      (route) =>
-        path === route || path.startsWith("/api/") || path.includes("/_next/") || path.includes("/favicon.ico"),
-    )
+    // Static assets and system routes
+    const systemRoutes = ["/_next", "/favicon.ico", "/api/auth", "/images", "/fonts"]
 
-    // If not authenticated and not a public route, redirect to login
-    if (!session && !isPublicRoute) {
+    // Check if the current path is a public or system route
+    const isPublicRoute = publicRoutes.some((route) => path === route)
+    const isSystemRoute = systemRoutes.some((prefix) => path.startsWith(prefix))
+
+    // If not authenticated and not a public or system route, redirect to login
+    if (!session && !isPublicRoute && !isSystemRoute) {
       const redirectUrl = new URL("/login", req.url)
       redirectUrl.searchParams.set("redirectTo", path)
       return NextResponse.redirect(redirectUrl)
@@ -34,10 +41,14 @@ export async function middleware(req: NextRequest) {
     if (session) {
       try {
         // Get user role from custom claims
-        const { data: userData, error } = await supabase.from("users").select("role").eq("id", session.user.id).single()
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", session.user.id)
+          .single()
 
-        if (error) {
-          console.error("Error fetching user role:", error.message)
+        if (userError) {
+          console.error("Error fetching user role:", userError.message)
           return res
         }
 
@@ -70,7 +81,7 @@ export async function middleware(req: NextRequest) {
   } catch (error) {
     console.error("Middleware error:", error)
     // If there's an error in the middleware, continue with the request
-    return res
+    return NextResponse.next()
   }
 }
 

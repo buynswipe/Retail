@@ -1,37 +1,31 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
+import { Inter } from "next/font/google"
 import { AuthProvider } from "@/lib/auth-context"
-import { CartProvider } from "@/lib/cart-context"
-import { NotificationProvider } from "@/lib/notification-context"
 import { ThemeProvider } from "@/components/theme-provider"
+import EnvSetup from "./env-setup"
+import { ErrorBoundary } from "./components/error-boundary"
 
 const inter = Inter({ subsets: ["latin"] })
 
-export const metadata: Metadata = {
-  title: "Retail Bandhu | FMCG Supply Chain Platform",
-  description:
-    "Connecting retailers, wholesalers and delivery partners for streamlined FMCG supply chain operations in India",
-  keywords: "FMCG India, Retail Bandhu, retail, wholesale, delivery, supply chain",
+export const metadata = {
+  title: "Retail Bandhu - Connecting Retailers and Wholesalers",
+  description: "A platform for retailers and wholesalers to connect and do business",
     generator: 'v0.dev'
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AuthProvider>
-            <CartProvider>
-              <NotificationProvider>{children}</NotificationProvider>
-            </CartProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+            <AuthProvider>
+              <EnvSetup />
+              {children}
+            </AuthProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

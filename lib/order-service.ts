@@ -1,183 +1,190 @@
-import { supabase, supabaseAdmin, type Order, type OrderItem } from "./supabase-client"
+import { supabase } from "./supabase-client"
+import type { Order } from "./supabase-client"
 
-// Generate a unique order number
-function generateOrderNumber(): string {
-  const timestamp = Date.now().toString().slice(-8)
-  const random = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, "0")
-  return `ORD-${timestamp}-${random}`
-}
+/**
+ * Get orders by retailer
+ */
+export async function getOrdersByRetailer(retailerId: string, options = { limit: 50, offset: 0 }) {
+  try {
+    const { data, error, count } = await supabase
+      .from("Orders")
+      .select("*, OrderItems(*)", { count: "exact" })
+      .eq("retailer_id", retailerId)
+      .range(options.offset, options.offset + options.limit - 1)
+      .order("created_at", { ascending: false })
 
-// Get all orders
-export async function getAllOrders() {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, order_items(*), users!retailer_id(*), users!wholesaler_id(*)")
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching orders:", error)
-    throw new Error("Failed to fetch orders")
-  }
-
-  return data
-}
-
-// Get orders for a retailer
-export async function getRetailerOrders(retailerId: string) {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, order_items(*), users!wholesaler_id(name, business_name)")
-    .eq("retailer_id", retailerId)
-    .order("created_at", { ascending: false })
-
-  if (error) {
+    return { data, error, count }
+  } catch (error) {
     console.error("Error fetching retailer orders:", error)
-    throw new Error("Failed to fetch retailer orders")
+    return { data: null, error, count: 0 }
   }
-
-  return data
 }
 
-// Alias for getRetailerOrders to match the required export
-export const getOrdersByRetailer = getRetailerOrders
+/**
+ * Alias for getOrdersByRetailer
+ */
+export async function getRetailerOrders(retailerId: string, options = { limit: 50, offset: 0 }) {
+  return getOrdersByRetailer(retailerId, options)
+}
 
-// Get orders for a wholesaler
-export async function getWholesalerOrders(wholesalerId: string) {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, order_items(*), users!retailer_id(name, business_name)")
-    .eq("wholesaler_id", wholesalerId)
-    .order("created_at", { ascending: false })
+/**
+ * Get orders by wholesaler
+ */
+export async function getOrdersByWholesaler(wholesalerId: string, options = { limit: 50, offset: 0 }) {
+  try {
+    const { data, error, count } = await supabase
+      .from("Orders")
+      .select("*, OrderItems(*)", { count: "exact" })
+      .eq("wholesaler_id", wholesalerId)
+      .range(options.offset, options.offset + options.limit - 1)
+      .order("created_at", { ascending: false })
 
-  if (error) {
+    return { data, error, count }
+  } catch (error) {
     console.error("Error fetching wholesaler orders:", error)
-    throw new Error("Failed to fetch wholesaler orders")
+    return { data: null, error, count: 0 }
   }
-
-  return data
 }
 
-// Alias for getWholesalerOrders to match the required export
-export const getOrdersByWholesaler = getWholesalerOrders
+/**
+ * Alias for getOrdersByWholesaler
+ */
+export async function getWholesalerOrders(wholesalerId: string, options = { limit: 50, offset: 0 }) {
+  return getOrdersByWholesaler(wholesalerId, options)
+}
 
-// Get a specific order
-export async function getOrder(orderId: string) {
-  const { data, error } = await supabase
-    .from("orders")
-    .select(
-      "*, order_items(*), users!retailer_id(name, business_name, phone_number), users!wholesaler_id(name, business_name, phone_number)",
-    )
-    .eq("id", orderId)
-    .single()
+/**
+ * Get an order by ID
+ */
+export async function getOrderById(orderId: string) {
+  try {
+    const { data, error } = await supabase.from("Orders").select("*, OrderItems(*)").eq("id", orderId).single()
 
-  if (error) {
+    return { data, error }
+  } catch (error) {
     console.error("Error fetching order:", error)
-    throw new Error("Failed to fetch order")
-  }
-
-  return data
-}
-
-// Create a new order
-export async function createOrder(
-  order: Omit<Order, "id" | "created_at" | "updated_at">,
-  orderItems: Omit<OrderItem, "id" | "created_at">[],
-) {
-  // Start a transaction
-  const { data: newOrder, error: orderError } = await supabaseAdmin.from("orders").insert(order).select().single()
-
-  if (orderError) {
-    console.error("Error creating order:", orderError)
-    throw new Error("Failed to create order")
-  }
-
-  // Add order items
-  const itemsWithOrderId = orderItems.map((item) => ({
-    ...item,
-    order_id: newOrder.id,
-  }))
-
-  const { error: itemsError } = await supabaseAdmin.from("order_items").insert(itemsWithOrderId)
-
-  if (itemsError) {
-    console.error("Error creating order items:", itemsError)
-    throw new Error("Failed to create order items")
-  }
-
-  return { success: true, orderId: newOrder.id }
-}
-
-// Get order by ID
-export async function getOrderById(orderId: string): Promise<{ data: Order | null; error: any }> {
-  try {
-    const { data, error } = await supabase.from("orders").select("*").eq("id", orderId).single()
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting order:", error)
     return { data: null, error }
   }
 }
 
-// Get order items by order ID
-export async function getOrderItems(orderId: string): Promise<{ data: OrderItem[] | null; error: any }> {
+/**
+ * Create a new order
+ */
+export async function createOrder(order: Omit<Order, "id" | "created_at">, orderItems: any[]) {
   try {
-    const { data, error } = await supabase.from("order_items").select("*").eq("order_id", orderId)
+    // Start a transaction
+    const { data: orderData, error: orderError } = await supabase
+      .from("Orders")
+      .insert({
+        ...order,
+        status: order.status || "pending",
+      })
+      .select()
+      .single()
 
-    return { data, error }
+    if (orderError) throw orderError
+
+    // Add order items
+    const orderItemsWithOrderId = orderItems.map((item) => ({
+      ...item,
+      order_id: orderData.id,
+    }))
+
+    const { error: itemsError } = await supabase.from("OrderItems").insert(orderItemsWithOrderId)
+
+    if (itemsError) throw itemsError
+
+    return { data: orderData, error: null }
   } catch (error) {
-    console.error("Error getting order items:", error)
+    console.error("Error creating order:", error)
     return { data: null, error }
   }
 }
 
-// Update order status
-export async function updateOrderStatus(
-  orderId: string,
-  status: "placed" | "confirmed" | "rejected" | "dispatched" | "delivered",
-) {
-  const { error } = await supabase
-    .from("orders")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("id", orderId)
+/**
+ * Update order status
+ */
+export async function updateOrderStatus(orderId: string, status: string) {
+  try {
+    const { data, error } = await supabase.from("Orders").update({ status }).eq("id", orderId).select().single()
 
-  if (error) {
+    return { data, error }
+  } catch (error) {
     console.error("Error updating order status:", error)
-    throw new Error("Failed to update order status")
+    return { data: null, error }
   }
-
-  return { success: true }
 }
 
-// Get order statistics
-export async function getOrderStatistics(userId: string, userRole: string) {
-  let query
+/**
+ * Cancel an order
+ */
+export async function cancelOrder(orderId: string, reason: string) {
+  try {
+    const { data, error } = await supabase
+      .from("Orders")
+      .update({
+        status: "cancelled",
+        cancellation_reason: reason,
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .select()
+      .single()
 
-  if (userRole === "retailer") {
-    query = supabase.from("orders").select("status").eq("retailer_id", userId)
-  } else if (userRole === "wholesaler") {
-    query = supabase.from("orders").select("status").eq("wholesaler_id", userId)
-  } else {
-    throw new Error("Invalid user role")
+    return { data, error }
+  } catch (error) {
+    console.error("Error cancelling order:", error)
+    return { data: null, error }
   }
+}
 
-  const { data, error } = await query
+/**
+ * Get order statistics
+ */
+export async function getOrderStatistics(userId: string, role: string) {
+  try {
+    const roleField = role === "retailer" ? "retailer_id" : "wholesaler_id"
 
-  if (error) {
+    // Get total orders
+    const { count: totalCount } = await supabase
+      .from("Orders")
+      .select("*", { count: "exact", head: true })
+      .eq(roleField, userId)
+
+    // Get pending orders
+    const { count: pendingCount } = await supabase
+      .from("Orders")
+      .select("*", { count: "exact", head: true })
+      .eq(roleField, userId)
+      .eq("status", "pending")
+
+    // Get completed orders
+    const { count: completedCount } = await supabase
+      .from("Orders")
+      .select("*", { count: "exact", head: true })
+      .eq(roleField, userId)
+      .eq("status", "completed")
+
+    // Get cancelled orders
+    const { count: cancelledCount } = await supabase
+      .from("Orders")
+      .select("*", { count: "exact", head: true })
+      .eq(roleField, userId)
+      .eq("status", "cancelled")
+
+    return {
+      totalCount: totalCount || 0,
+      pendingCount: pendingCount || 0,
+      completedCount: completedCount || 0,
+      cancelledCount: cancelledCount || 0,
+    }
+  } catch (error) {
     console.error("Error fetching order statistics:", error)
-    throw new Error("Failed to fetch order statistics")
+    return {
+      totalCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      cancelledCount: 0,
+    }
   }
-
-  const stats = {
-    total: data.length,
-    placed: data.filter((order) => order.status === "placed").length,
-    confirmed: data.filter((order) => order.status === "confirmed").length,
-    rejected: data.filter((order) => order.status === "rejected").length,
-    dispatched: data.filter((order) => order.status === "dispatched").length,
-    delivered: data.filter((order) => order.status === "delivered").length,
-  }
-
-  return stats
 }

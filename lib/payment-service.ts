@@ -1,228 +1,184 @@
 import { supabase } from "./supabase-client"
 import type { Payment } from "./supabase-client"
 
-// Get payment by ID
-export async function getPaymentById(paymentId: string) {
+/**
+ * Create a new payment
+ */
+export async function createPayment(payment: Omit<Payment, "id" | "created_at" | "reference_id">) {
   try {
-    const { data, error } = await supabase.from("payments").select("*").eq("id", paymentId).single()
-
-    if (error) throw error
-    return data as Payment
-  } catch (error) {
-    console.error("Error fetching payment:", error)
-    return null
-  }
-}
-
-// Get payments by order ID
-export async function getPaymentsByOrderId(orderId: string) {
-  try {
-    const { data, error } = await supabase.from("payments").select("*").eq("order_id", orderId)
-
-    if (error) throw error
-    return data as Payment[]
-  } catch (error) {
-    console.error("Error fetching payments for order:", error)
-    return []
-  }
-}
-
-// Create a new payment
-export async function createPayment(payment: Omit<Payment, "id" | "created_at" | "updated_at" | "reference_id">) {
-  try {
+    // Generate a unique reference ID
     const referenceId = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
-    const newPayment = {
-      ...payment,
-      reference_id: referenceId,
-    }
+    const { data, error } = await supabase
+      .from("Payments")
+      .insert({
+        ...payment,
+        reference_id: referenceId,
+        status: payment.status || "pending",
+      })
+      .select()
+      .single()
 
-    const { data, error } = await supabase.from("payments").insert([newPayment]).select()
-
-    if (error) throw error
-    return data?.[0] as Payment
+    return { data, error }
   } catch (error) {
     console.error("Error creating payment:", error)
-    return null
+    return { data: null, error }
   }
 }
 
-// Update payment status
-export async function updatePaymentStatus(
-  paymentId: string,
-  status: Payment["payment_status"],
-  transactionId?: string,
-) {
+/**
+ * Get a payment by ID
+ */
+export async function getPaymentById(paymentId: string) {
   try {
-    const updates: Partial<Payment> = {
-      payment_status: status,
-      updated_at: new Date().toISOString(),
-    }
+    const { data, error } = await supabase.from("Payments").select("*").eq("id", paymentId).single()
 
-    if (transactionId) {
-      updates.transaction_id = transactionId
-    }
+    return { data, error }
+  } catch (error) {
+    console.error("Error fetching payment:", error)
+    return { data: null, error }
+  }
+}
 
-    const { data, error } = await supabase.from("payments").update(updates).eq("id", paymentId).select()
+/**
+ * Get payments by user ID
+ */
+export async function getPaymentsByUserId(userId: string, options = { limit: 50, offset: 0 }) {
+  try {
+    const { data, error, count } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact" })
+      .eq("user_id", userId)
+      .range(options.offset, options.offset + options.limit - 1)
+      .order("created_at", { ascending: false })
 
-    if (error) throw error
-    return data?.[0] as Payment
+    return { data, error, count }
+  } catch (error) {
+    console.error("Error fetching user payments:", error)
+    return { data: null, error, count: 0 }
+  }
+}
+
+/**
+ * Update payment status
+ */
+export async function updatePaymentStatus(paymentId: string, status: string) {
+  try {
+    const { data, error } = await supabase.from("Payments").update({ status }).eq("id", paymentId).select().single()
+
+    return { data, error }
   } catch (error) {
     console.error("Error updating payment status:", error)
-    return null
+    return { data: null, error }
   }
 }
 
-// Record COD collection
-export async function recordCodCollection(paymentId: string, collectedBy: string) {
-  try {
-    const { data, error } = await supabase
-      .from("payments")
-      .update({
-        payment_status: "completed",
-        collected_by: collectedBy,
-        payment_date: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", paymentId)
-      .eq("payment_method", "cod")
-      .select()
-
-    if (error) throw error
-    return data?.[0] as Payment
-  } catch (error) {
-    console.error("Error recording COD collection:", error)
-    return null
-  }
-}
-
-// Alias for recordCodCollection
-export const markCodPaymentCollected = recordCodCollection
-
-// Verify UPI payment
-export async function verifyUpiPayment(paymentId: string, transactionId: string) {
+/**
+ * Verify UPI payment
+ */
+export async function verifyUpiPayment(referenceId: string, transactionId: string) {
   try {
     // In a real implementation, this would call a payment gateway API
     // For now, we'll simulate a successful verification
 
     const { data, error } = await supabase
-      .from("payments")
+      .from("Payments")
       .update({
-        payment_status: "completed",
+        status: "completed",
         transaction_id: transactionId,
-        payment_date: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        verified_at: new Date().toISOString(),
       })
-      .eq("id", paymentId)
-      .eq("payment_method", "upi")
+      .eq("reference_id", referenceId)
       .select()
+      .single()
 
-    if (error) throw error
     return {
-      success: true,
-      payment: data?.[0] as Payment,
+      data,
+      error,
+      verified: !error && data?.status === "completed",
     }
   } catch (error) {
     console.error("Error verifying UPI payment:", error)
-    return {
-      success: false,
-      error: "Payment verification failed",
-    }
+    return { data: null, error, verified: false }
   }
 }
 
-// Get payments by user ID (works for retailers, wholesalers, etc.)
-export async function getPaymentsByUserId(userId: string, role: "retailer" | "wholesaler") {
+/**
+ * Record COD payment collection
+ */
+export async function recordCodCollection(paymentId: string, collectedBy: string) {
   try {
-    let query = supabase.from("payments").select(`
-        *,
-        orders!inner(*)
-      `)
+    const { data, error } = await supabase
+      .from("Payments")
+      .update({
+        status: "completed",
+        collected_by: collectedBy,
+        collected_at: new Date().toISOString(),
+      })
+      .eq("id", paymentId)
+      .eq("payment_method", "cod")
+      .select()
+      .single()
 
-    if (role === "retailer") {
-      query = query.eq("orders.retailer_id", userId)
-    } else if (role === "wholesaler") {
-      query = query.eq("orders.wholesaler_id", userId)
-    }
-
-    const { data, error } = await query.order("created_at", { ascending: false })
-
-    if (error) throw error
-    return data.map((item) => ({
-      ...item.payments,
-      order: item.orders,
-    }))
+    return { data, error }
   } catch (error) {
-    console.error(`Error fetching payments for ${role}:`, error)
-    return []
+    console.error("Error recording COD collection:", error)
+    return { data: null, error }
   }
 }
 
-// Get payment statistics
-export async function getPaymentStatistics(
-  userId: string,
-  role: "retailer" | "wholesaler",
-  period: "week" | "month" | "year" = "month",
-) {
+/**
+ * Alias for recordCodCollection
+ */
+export async function markCodPaymentCollected(paymentId: string, collectedBy: string) {
+  return recordCodCollection(paymentId, collectedBy)
+}
+
+/**
+ * Get payment statistics
+ */
+export async function getPaymentStatistics(userId: string) {
   try {
-    // Calculate date range
-    const now = new Date()
-    const startDate = new Date()
+    // Get total payments
+    const { count: totalCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
 
-    if (period === "week") {
-      startDate.setDate(now.getDate() - 7)
-    } else if (period === "month") {
-      startDate.setMonth(now.getMonth() - 1)
-    } else if (period === "year") {
-      startDate.setFullYear(now.getFullYear() - 1)
-    }
+    // Get completed payments
+    const { count: completedCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "completed")
 
-    // Format dates for Postgres
-    const startDateStr = startDate.toISOString()
-    const endDateStr = now.toISOString()
+    // Get pending payments
+    const { count: pendingCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "pending")
 
-    let query = supabase
-      .from("payments")
-      .select(`
-        *,
-        orders!inner(*)
-      `)
-      .gte("created_at", startDateStr)
-      .lte("created_at", endDateStr)
+    // Get total amount
+    const { data: totalAmountData } = await supabase.rpc("get_total_payments_amount", {
+      user_id_param: userId,
+    })
 
-    if (role === "retailer") {
-      query = query.eq("orders.retailer_id", userId)
-    } else if (role === "wholesaler") {
-      query = query.eq("orders.wholesaler_id", userId)
-    }
-
-    const { data, error } = await query
-
-    if (error) throw error
-
-    // Calculate statistics
-    const total = data.length
-    const completed = data.filter((item) => item.payment_status === "completed").length
-    const pending = data.filter((item) => item.payment_status === "pending").length
-    const totalAmount = data.reduce((sum, item) => sum + item.amount, 0)
+    const totalAmount = totalAmountData || 0
 
     return {
-      total,
-      completed,
-      pending,
+      totalCount: totalCount || 0,
+      completedCount: completedCount || 0,
+      pendingCount: pendingCount || 0,
       totalAmount,
-      completionRate: total > 0 ? (completed / total) * 100 : 0,
-      period,
     }
   } catch (error) {
-    console.error(`Error fetching payment statistics for ${role}:`, error)
+    console.error("Error fetching payment statistics:", error)
     return {
-      total: 0,
-      completed: 0,
-      pending: 0,
+      totalCount: 0,
+      completedCount: 0,
+      pendingCount: 0,
       totalAmount: 0,
-      completionRate: 0,
-      period,
     }
   }
 }

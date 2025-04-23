@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart, CreditCard, BarChart4 } from "lucide-react"
+import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart, CreditCard, BarChart } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -161,7 +161,7 @@ function RetailerDashboardContent() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Analytics</CardTitle>
-            <BarChart4 className="h-4 w-4 text-muted-foreground" />
+            <BarChart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">View Reports</div>

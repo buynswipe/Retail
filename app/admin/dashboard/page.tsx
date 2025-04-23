@@ -18,7 +18,7 @@ import {
   ChevronUp,
   CheckCircle,
   XCircle,
-  BarChart4,
+  BarChart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -165,7 +165,7 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Platform Analytics</CardTitle>
-                <BarChart4 className="h-4 w-4 text-muted-foreground" />
+                <BarChart className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">System Metrics</div>

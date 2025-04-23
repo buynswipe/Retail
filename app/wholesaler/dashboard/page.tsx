@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { ShoppingBag, Clock, FileText, Package, CreditCard, ShoppingCart, User, BarChart4 } from "lucide-react"
+import { ShoppingBag, Clock, FileText, Package, CreditCard, ShoppingCart, User, BarChart } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useRouter } from "next/navigation"
@@ -114,7 +114,7 @@ function WholesalerDashboardContent() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Analytics</CardTitle>
-            <BarChart4 className="h-4 w-4 text-muted-foreground" />
+            <BarChart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">Business Insights</div>

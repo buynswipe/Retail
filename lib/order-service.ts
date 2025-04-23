@@ -1,5 +1,4 @@
-import { supabase } from "./supabase-client"
-import type { Order, OrderItem } from "./supabase-client"
+import { supabase, supabaseAdmin, type Order, type OrderItem } from "./supabase-client"
 
 // Generate a unique order number
 function generateOrderNumber(): string {
@@ -10,135 +9,104 @@ function generateOrderNumber(): string {
   return `ORD-${timestamp}-${random}`
 }
 
+// Get all orders
+export async function getAllOrders() {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(*), users!retailer_id(*), users!wholesaler_id(*)")
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching orders:", error)
+    throw new Error("Failed to fetch orders")
+  }
+
+  return data
+}
+
+// Get orders for a retailer
+export async function getRetailerOrders(retailerId: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(*), users!wholesaler_id(name, business_name)")
+    .eq("retailer_id", retailerId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching retailer orders:", error)
+    throw new Error("Failed to fetch retailer orders")
+  }
+
+  return data
+}
+
+// Alias for getRetailerOrders to match the required export
+export const getOrdersByRetailer = getRetailerOrders
+
+// Get orders for a wholesaler
+export async function getWholesalerOrders(wholesalerId: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(*), users!retailer_id(name, business_name)")
+    .eq("wholesaler_id", wholesalerId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching wholesaler orders:", error)
+    throw new Error("Failed to fetch wholesaler orders")
+  }
+
+  return data
+}
+
+// Alias for getWholesalerOrders to match the required export
+export const getOrdersByWholesaler = getWholesalerOrders
+
+// Get a specific order
+export async function getOrder(orderId: string) {
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "*, order_items(*), users!retailer_id(name, business_name, phone_number), users!wholesaler_id(name, business_name, phone_number)",
+    )
+    .eq("id", orderId)
+    .single()
+
+  if (error) {
+    console.error("Error fetching order:", error)
+    throw new Error("Failed to fetch order")
+  }
+
+  return data
+}
+
 // Create a new order
 export async function createOrder(
-  retailerId: string,
-  wholesalerId: string,
-  items: Array<{ productId: string; quantity: number; unitPrice: number; totalPrice: number }>,
-  totalAmount: number,
-  paymentMethod: "cod" | "upi",
-): Promise<{ data: Order | null; error: any }> {
-  try {
-    // Get platform settings
-    const { data: settings, error: settingsError } = await supabase
-      .from("platform_settings")
-      .select("*")
-      .order("effective_from", { ascending: false })
-      .limit(1)
-      .single()
+  order: Omit<Order, "id" | "created_at" | "updated_at">,
+  orderItems: Omit<OrderItem, "id" | "created_at">[],
+) {
+  // Start a transaction
+  const { data: newOrder, error: orderError } = await supabaseAdmin.from("orders").insert(order).select().single()
 
-    if (settingsError) {
-      return { data: null, error: settingsError }
-    }
-
-    // Calculate commission and delivery charges
-    const commission = (totalAmount * settings.commission_percentage) / 100
-    const commissionGst = (commission * settings.commission_gst_rate) / 100
-    const deliveryCharge = settings.delivery_charge
-    const deliveryChargeGst = (deliveryCharge * settings.delivery_gst_rate) / 100
-    const wholesalerPayout = totalAmount - commission - commissionGst
-
-    // Create order
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        order_number: generateOrderNumber(),
-        retailer_id: retailerId,
-        wholesaler_id: wholesalerId,
-        total_amount: totalAmount,
-        status: "placed",
-        payment_method: paymentMethod,
-        payment_status: "pending",
-        commission,
-        commission_gst: commissionGst,
-        delivery_charge: deliveryCharge,
-        delivery_charge_gst: deliveryChargeGst,
-        wholesaler_payout: wholesalerPayout,
-      })
-      .select()
-      .single()
-
-    if (orderError) {
-      return { data: null, error: orderError }
-    }
-
-    // Create order items
-    const orderItems = items.map((item) => ({
-      order_id: order.id,
-      product_id: item.productId,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.totalPrice,
-    }))
-
-    const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
-
-    if (itemsError) {
-      // Rollback order creation
-      await supabase.from("orders").delete().eq("id", order.id)
-      return { data: null, error: itemsError }
-    }
-
-    // Create delivery assignment
-    const { error: assignmentError } = await supabase.from("delivery_assignments").insert({
-      order_id: order.id,
-      status: "pending",
-      delivery_charge: deliveryCharge,
-      delivery_charge_gst: deliveryChargeGst,
-    })
-
-    if (assignmentError) {
-      // Log error but don't rollback (delivery can be assigned later)
-      console.error("Error creating delivery assignment:", assignmentError)
-    }
-
-    return { data: order, error: null }
-  } catch (error) {
-    console.error("Error creating order:", error)
-    return { data: null, error }
+  if (orderError) {
+    console.error("Error creating order:", orderError)
+    throw new Error("Failed to create order")
   }
-}
 
-// Get orders by retailer ID
-export async function getRetailerOrders(retailerId: string): Promise<{ data: Order[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("retailer_id", retailerId)
-      .order("created_at", { ascending: false })
+  // Add order items
+  const itemsWithOrderId = orderItems.map((item) => ({
+    ...item,
+    order_id: newOrder.id,
+  }))
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting retailer orders:", error)
-    return { data: null, error }
+  const { error: itemsError } = await supabaseAdmin.from("order_items").insert(itemsWithOrderId)
+
+  if (itemsError) {
+    console.error("Error creating order items:", itemsError)
+    throw new Error("Failed to create order items")
   }
-}
 
-// Get orders by wholesaler ID
-export async function getWholesalerOrders(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("wholesaler_id", wholesalerId)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting wholesaler orders:", error)
-    return { data: null, error }
-  }
-}
-
-// Get orders by retailer (alias for getRetailerOrders for compatibility)
-export async function getOrdersByRetailer(retailerId: string): Promise<{ data: Order[] | null; error: any }> {
-  return getRetailerOrders(retailerId)
-}
-
-// Get orders by wholesaler (alias for getWholesalerOrders for compatibility)
-export async function getOrdersByWholesaler(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
-  return getWholesalerOrders(wholesalerId)
+  return { success: true, orderId: newOrder.id }
 }
 
 // Get order by ID
@@ -168,14 +136,48 @@ export async function getOrderItems(orderId: string): Promise<{ data: OrderItem[
 // Update order status
 export async function updateOrderStatus(
   orderId: string,
-  status: "confirmed" | "rejected" | "dispatched" | "delivered",
-): Promise<{ success: boolean; error: any }> {
-  try {
-    const { error } = await supabase.from("orders").update({ status }).eq("id", orderId)
+  status: "placed" | "confirmed" | "rejected" | "dispatched" | "delivered",
+) {
+  const { error } = await supabase
+    .from("orders")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", orderId)
 
-    return { success: !error, error }
-  } catch (error) {
+  if (error) {
     console.error("Error updating order status:", error)
-    return { success: false, error }
+    throw new Error("Failed to update order status")
   }
+
+  return { success: true }
+}
+
+// Get order statistics
+export async function getOrderStatistics(userId: string, userRole: string) {
+  let query
+
+  if (userRole === "retailer") {
+    query = supabase.from("orders").select("status").eq("retailer_id", userId)
+  } else if (userRole === "wholesaler") {
+    query = supabase.from("orders").select("status").eq("wholesaler_id", userId)
+  } else {
+    throw new Error("Invalid user role")
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error("Error fetching order statistics:", error)
+    throw new Error("Failed to fetch order statistics")
+  }
+
+  const stats = {
+    total: data.length,
+    placed: data.filter((order) => order.status === "placed").length,
+    confirmed: data.filter((order) => order.status === "confirmed").length,
+    rejected: data.filter((order) => order.status === "rejected").length,
+    dispatched: data.filter((order) => order.status === "dispatched").length,
+    delivered: data.filter((order) => order.status === "delivered").length,
+  }
+
+  return stats
 }

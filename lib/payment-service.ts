@@ -1,252 +1,253 @@
-import { supabase } from "./supabase-client"
-import type { Payment } from "./supabase-client"
-
-// Generate a unique reference ID
-function generateReferenceId(): string {
-  const timestamp = Date.now().toString().slice(-6)
-  const random = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0")
-  return `PAY-${timestamp}-${random}`
-}
+import { supabase, supabaseAdmin, type Payment } from "./supabase-client"
 
 // Create a new payment
-export async function createPayment(
-  orderId: string,
-  amount: number,
-  paymentMethod: "cod" | "upi",
-  upiId?: string,
-): Promise<{ data: Payment | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("payments")
-      .insert({
-        order_id: orderId,
-        amount,
-        payment_method: paymentMethod,
-        payment_status: "pending",
-        reference_id: generateReferenceId(),
-        upi_id: upiId,
-      })
-      .select()
-      .single()
+export async function createPayment(orderId: string, amount: number, paymentMethod: "cod" | "upi", upiId?: string) {
+  const referenceId = `PAY-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0")}`
 
-    return { data, error }
-  } catch (error) {
+  const { data, error } = await supabase
+    .from("payments")
+    .insert({
+      order_id: orderId,
+      amount,
+      payment_method: paymentMethod,
+      payment_status: "pending",
+      reference_id: referenceId,
+      upi_id: upiId,
+    })
+    .select()
+    .single()
+
+  if (error) {
     console.error("Error creating payment:", error)
-    return { data: null, error }
+    throw new Error("Failed to create payment")
+  }
+
+  return data
+}
+
+// Get all payments
+export async function getAllPayments() {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("*, orders(*)")
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching payments:", error)
+    throw new Error("Failed to fetch payments")
+  }
+
+  return data
+}
+
+// Get payments by user ID (works for retailers, wholesalers, etc.)
+export async function getPaymentsByUserId(userId: string, userRole: string) {
+  let query = supabase.from("payments").select("*, orders!inner(*)")
+
+  if (userRole === "retailer") {
+    query = query.eq("orders.retailer_id", userId)
+  } else if (userRole === "wholesaler") {
+    query = query.eq("orders.wholesaler_id", userId)
+  } else if (userRole === "delivery") {
+    // For delivery partners, we need to join with delivery_assignments
+    return getPaymentsByDeliveryPartnerId(userId)
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching payments:", error)
+    throw new Error("Failed to fetch payments")
+  }
+
+  return data
+}
+
+// Get payments for a delivery partner
+async function getPaymentsByDeliveryPartnerId(deliveryPartnerId: string) {
+  const { data, error } = await supabase
+    .from("delivery_assignments")
+    .select("*, orders!inner(*), payments!inner(*)")
+    .eq("delivery_partner_id", deliveryPartnerId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching delivery payments:", error)
+    throw new Error("Failed to fetch delivery payments")
+  }
+
+  return data.map((item) => ({
+    ...item.payments,
+    orders: item.orders,
+  }))
+}
+
+// Get payment statistics for a user
+export async function getPaymentStatistics(userId: string, userRole: string) {
+  let totalQuery, pendingQuery, completedQuery
+
+  if (userRole === "retailer") {
+    totalQuery = supabase.from("orders").select("total_amount").eq("retailer_id", userId).eq("status", "delivered")
+
+    pendingQuery = supabase
+      .from("payments")
+      .select("amount")
+      .eq("payment_status", "pending")
+      .eq("orders.retailer_id", userId)
+      .not("orders.status", "eq", "rejected")
+
+    completedQuery = supabase
+      .from("payments")
+      .select("amount")
+      .eq("payment_status", "completed")
+      .eq("orders.retailer_id", userId)
+  } else if (userRole === "wholesaler") {
+    totalQuery = supabase
+      .from("orders")
+      .select("wholesaler_payout")
+      .eq("wholesaler_id", userId)
+      .eq("status", "delivered")
+
+    pendingQuery = supabase
+      .from("orders")
+      .select("wholesaler_payout")
+      .eq("wholesaler_id", userId)
+      .eq("status", "delivered")
+      .eq("payments.payment_status", "pending")
+
+    completedQuery = supabase
+      .from("orders")
+      .select("wholesaler_payout")
+      .eq("wholesaler_id", userId)
+      .eq("status", "delivered")
+      .eq("payments.payment_status", "completed")
+  } else if (userRole === "delivery") {
+    totalQuery = supabase
+      .from("delivery_assignments")
+      .select("delivery_charge, delivery_charge_gst")
+      .eq("delivery_partner_id", userId)
+      .eq("status", "completed")
+
+    pendingQuery = supabase
+      .from("delivery_assignments")
+      .select("delivery_charge, delivery_charge_gst")
+      .eq("delivery_partner_id", userId)
+      .eq("status", "completed")
+      .eq("orders.payments.payment_status", "pending")
+
+    completedQuery = supabase
+      .from("delivery_assignments")
+      .select("delivery_charge, delivery_charge_gst")
+      .eq("delivery_partner_id", userId)
+      .eq("status", "completed")
+      .eq("orders.payments.payment_status", "completed")
+  }
+
+  const [totalResult, pendingResult, completedResult] = await Promise.all([totalQuery, pendingQuery, completedQuery])
+
+  if (totalResult.error || pendingResult.error || completedResult.error) {
+    console.error(
+      "Error fetching payment statistics:",
+      totalResult.error || pendingResult.error || completedResult.error,
+    )
+    throw new Error("Failed to fetch payment statistics")
+  }
+
+  let totalAmount = 0
+  let pendingAmount = 0
+  let completedAmount = 0
+
+  if (userRole === "retailer") {
+    totalAmount = totalResult.data.reduce((sum, item) => sum + item.total_amount, 0)
+    pendingAmount = pendingResult.data.reduce((sum, item) => sum + item.amount, 0)
+    completedAmount = completedResult.data.reduce((sum, item) => sum + item.amount, 0)
+  } else if (userRole === "wholesaler") {
+    totalAmount = totalResult.data.reduce((sum, item) => sum + item.wholesaler_payout, 0)
+    pendingAmount = pendingResult.data.reduce((sum, item) => sum + item.wholesaler_payout, 0)
+    completedAmount = completedResult.data.reduce((sum, item) => sum + item.wholesaler_payout, 0)
+  } else if (userRole === "delivery") {
+    totalAmount = totalResult.data.reduce((sum, item) => sum + item.delivery_charge + item.delivery_charge_gst, 0)
+    pendingAmount = pendingResult.data.reduce((sum, item) => sum + item.delivery_charge + item.delivery_charge_gst, 0)
+    completedAmount = completedResult.data.reduce(
+      (sum, item) => sum + item.delivery_charge + item.delivery_charge_gst,
+      0,
+    )
+  }
+
+  return {
+    totalAmount,
+    pendingAmount,
+    completedAmount,
   }
 }
 
-// Get payment by order ID
-export async function getPaymentByOrderId(orderId: string): Promise<{ data: Payment | null; error: any }> {
-  try {
-    const { data, error } = await supabase.from("payments").select("*").eq("order_id", orderId).single()
+// Record a payment
+export async function recordPayment(payment: Omit<Payment, "id" | "created_at" | "updated_at">) {
+  const { error } = await supabaseAdmin.from("payments").insert(payment)
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting payment:", error)
-    return { data: null, error }
+  if (error) {
+    console.error("Error recording payment:", error)
+    throw new Error("Failed to record payment")
   }
+
+  return { success: true }
 }
 
 // Update payment status
-export async function updatePaymentStatus(
-  paymentId: string,
-  status: "completed" | "failed",
-  transactionId?: string,
-): Promise<{ success: boolean; error: any }> {
-  try {
-    const updates: any = {
-      payment_status: status,
-      payment_date: new Date().toISOString(),
-    }
+export async function updatePaymentStatus(paymentId: string, status: "pending" | "completed" | "failed") {
+  const { error } = await supabase.from("payments").update({ payment_status: status }).eq("id", paymentId)
 
-    if (transactionId) {
-      updates.transaction_id = transactionId
-    }
-
-    const { error } = await supabase.from("payments").update(updates).eq("id", paymentId)
-
-    if (!error && status === "completed") {
-      // Get order ID
-      const { data: payment } = await supabase.from("payments").select("order_id").eq("id", paymentId).single()
-
-      if (payment) {
-        // Update order payment status
-        await supabase.from("orders").update({ payment_status: "completed" }).eq("id", payment.order_id)
-      }
-    }
-
-    return { success: !error, error }
-  } catch (error) {
+  if (error) {
     console.error("Error updating payment status:", error)
-    return { success: false, error }
+    throw new Error("Failed to update payment status")
   }
+
+  return { success: true }
 }
 
-// Record COD payment collection
-export async function recordCodCollection(
-  paymentId: string,
-  collectedById: string,
-): Promise<{ success: boolean; error: any }> {
-  try {
-    const { error } = await supabase
-      .from("payments")
-      .update({
-        payment_status: "completed",
-        payment_date: new Date().toISOString(),
-        collected_by: collectedById,
-      })
-      .eq("id", paymentId)
+// Record COD collection
+export async function recordCodCollection(paymentId: string, collectedBy: string) {
+  const { error } = await supabase
+    .from("payments")
+    .update({
+      payment_status: "completed",
+      collected_by: collectedBy,
+      payment_date: new Date().toISOString(),
+    })
+    .eq("id", paymentId)
+    .eq("payment_method", "cod")
 
-    if (!error) {
-      // Get order ID
-      const { data: payment } = await supabase.from("payments").select("order_id").eq("id", paymentId).single()
-
-      if (payment) {
-        // Update order payment status
-        await supabase.from("orders").update({ payment_status: "completed" }).eq("id", payment.order_id)
-      }
-    }
-
-    return { success: !error, error }
-  } catch (error) {
+  if (error) {
     console.error("Error recording COD collection:", error)
-    return { success: false, error }
+    throw new Error("Failed to record COD collection")
   }
+
+  return { success: true }
 }
 
-// Get payments by retailer ID
-export async function getRetailerPayments(retailerId: string): Promise<{ data: Payment[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*, orders!inner(*)")
-      .eq("orders.retailer_id", retailerId)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting retailer payments:", error)
-    return { data: null, error }
-  }
-}
-
-// Get payments by wholesaler ID
-export async function getWholesalerPayments(wholesalerId: string): Promise<{ data: Payment[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*, orders!inner(*)")
-      .eq("orders.wholesaler_id", wholesalerId)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting wholesaler payments:", error)
-    return { data: null, error }
-  }
-}
-
-// Mark COD payment as collected (alias for recordCodCollection for compatibility)
-export async function markCodPaymentCollected(
-  paymentId: string,
-  collectedById: string,
-): Promise<{ success: boolean; error: any }> {
-  return recordCodCollection(paymentId, collectedById)
-}
+// Alias for recordCodCollection to match the required export
+export const markCodPaymentCollected = recordCodCollection
 
 // Verify UPI payment
-export async function verifyUpiPayment(
-  paymentId: string,
-  transactionId: string,
-  amount: number,
-): Promise<{ success: boolean; error: any }> {
-  try {
-    // Get payment details
-    const { data: payment, error: fetchError } = await supabase
-      .from("payments")
-      .select("amount, payment_status")
-      .eq("id", paymentId)
-      .single()
+export async function verifyUpiPayment(paymentId: string, transactionId: string) {
+  // In a real app, you would verify with a payment gateway
+  // For now, we'll just update the status
+  const { error } = await supabase
+    .from("payments")
+    .update({
+      payment_status: "completed",
+      transaction_id: transactionId,
+      payment_date: new Date().toISOString(),
+    })
+    .eq("id", paymentId)
+    .eq("payment_method", "upi")
 
-    if (fetchError) {
-      return { success: false, error: fetchError }
-    }
-
-    // Verify amount
-    if (payment.amount !== amount) {
-      return { success: false, error: "Payment amount mismatch" }
-    }
-
-    // Check if already processed
-    if (payment.payment_status === "completed") {
-      return { success: true, error: null }
-    }
-
-    // Update payment status
-    return updatePaymentStatus(paymentId, "completed", transactionId)
-  } catch (error) {
+  if (error) {
     console.error("Error verifying UPI payment:", error)
-    return { success: false, error }
+    throw new Error("Failed to verify UPI payment")
   }
-}
 
-// Get payments by user ID
-export async function getPaymentsByUserId(userId: string): Promise<{ data: Payment[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*, orders!inner(*)")
-      .or(`orders.retailer_id.eq.${userId},orders.wholesaler_id.eq.${userId}`)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting payments by user ID:", error)
-    return { data: null, error }
-  }
-}
-
-// Get payment statistics
-export async function getPaymentStatistics(
-  userId: string,
-  userType: "retailer" | "wholesaler",
-): Promise<{ data: any | null; error: any }> {
-  try {
-    const userIdField = userType === "retailer" ? "retailer_id" : "wholesaler_id"
-
-    // Get total payments
-    const { data: totalData, error: totalError } = await supabase
-      .from("payments")
-      .select("amount, payment_status, orders!inner(*)")
-      .eq(`orders.${userIdField}`, userId)
-
-    if (totalError) {
-      return { data: null, error: totalError }
-    }
-
-    // Calculate statistics
-    const total = totalData.length
-    const completed = totalData.filter((p) => p.payment_status === "completed").length
-    const pending = totalData.filter((p) => p.payment_status === "pending").length
-    const totalAmount = totalData.reduce((sum, p) => sum + p.amount, 0)
-    const paidAmount = totalData.filter((p) => p.payment_status === "completed").reduce((sum, p) => sum + p.amount, 0)
-
-    return {
-      data: {
-        total,
-        completed,
-        pending,
-        totalAmount,
-        paidAmount,
-        pendingAmount: totalAmount - paidAmount,
-      },
-      error: null,
-    }
-  } catch (error) {
-    console.error("Error getting payment statistics:", error)
-    return { data: null, error }
-  }
+  return { success: true }
 }

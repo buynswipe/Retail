@@ -96,7 +96,7 @@ function NavbarContent() {
         { href: "/admin/users", label: t("Users"), icon: <User className="h-5 w-5 mr-2" /> },
         { href: "/admin/orders", label: t("Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/admin/settings", label: t("Settings"), icon: <Settings className="h-5 w-5 mr-2" /> },
-        { href: "/admin/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" },
+        { href: "/admin/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" /> },
       ]
     } else if (isChatPage) {
       return [

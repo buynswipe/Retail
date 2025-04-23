@@ -11,6 +11,7 @@ interface AuthContextType {
   isLoading: boolean
   setUser: (user: UserData | null) => void
   logout: () => Promise<void>
+  error: Error | null
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,11 +19,13 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   setUser: () => {},
   logout: async () => {},
+  error: null,
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -30,8 +33,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const currentUser = await getCurrentUser()
         setUser(currentUser)
-      } catch (error) {
-        console.error("Error loading user:", error)
+        setError(null)
+      } catch (err) {
+        console.error("Error loading user:", err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        setUser(null)
       } finally {
         setIsLoading(false)
       }
@@ -47,12 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
         router.push("/login")
       }
-    } catch (error) {
-      console.error("Error logging out:", error)
+    } catch (err) {
+      console.error("Error logging out:", err)
+      setError(err instanceof Error ? err : new Error(String(err)))
     }
   }
 
-  return <AuthContext.Provider value={{ user, isLoading, setUser, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, isLoading, setUser, logout, error }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

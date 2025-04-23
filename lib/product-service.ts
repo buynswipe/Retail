@@ -1,34 +1,5 @@
 import { supabase } from "./supabase-client"
-
-export interface Product {
-  id: string
-  wholesaler_id: string
-  name: string
-  description?: string
-  price: number
-  stock_quantity: number
-  image_url?: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateProductData {
-  name: string
-  description?: string
-  price: number
-  stock_quantity: number
-  image_url?: string
-}
-
-export interface UpdateProductData {
-  name?: string
-  description?: string
-  price?: number
-  stock_quantity?: number
-  image_url?: string
-  is_active?: boolean
-}
+import type { Product } from "./supabase-client"
 
 // Get products by wholesaler ID
 export async function getProductsByWholesaler(wholesalerId: string): Promise<{ data: Product[] | null; error: any }> {
@@ -37,6 +8,7 @@ export async function getProductsByWholesaler(wholesalerId: string): Promise<{ d
       .from("products")
       .select("*")
       .eq("wholesaler_id", wholesalerId)
+      .eq("is_active", true)
       .order("created_at", { ascending: false })
 
     return { data, error }
@@ -46,21 +18,50 @@ export async function getProductsByWholesaler(wholesalerId: string): Promise<{ d
   }
 }
 
+// Get all active products
+export async function getAllProducts(): Promise<{ data: Product[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting products:", error)
+    return { data: null, error }
+  }
+}
+
+// Get products (alias for getAllProducts for compatibility)
+export async function getProducts(): Promise<{ data: Product[] | null; error: any }> {
+  return getAllProducts()
+}
+
+// Get product by ID
+export async function getProductById(productId: string): Promise<{ data: Product | null; error: any }> {
+  try {
+    const { data, error } = await supabase.from("products").select("*").eq("id", productId).single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting product:", error)
+    return { data: null, error }
+  }
+}
+
 // Create a new product
 export async function createProduct(
   wholesalerId: string,
-  productData: CreateProductData,
+  product: Omit<Product, "id" | "wholesaler_id" | "created_at" | "updated_at" | "is_active">,
 ): Promise<{ data: Product | null; error: any }> {
   try {
     const { data, error } = await supabase
       .from("products")
       .insert({
+        ...product,
         wholesaler_id: wholesalerId,
-        name: productData.name,
-        description: productData.description,
-        price: productData.price,
-        stock_quantity: productData.stock_quantity,
-        image_url: productData.image_url,
         is_active: true,
       })
       .select()
@@ -73,13 +74,13 @@ export async function createProduct(
   }
 }
 
-// Update a product
+// Update an existing product
 export async function updateProduct(
   productId: string,
-  productData: UpdateProductData,
+  updates: Partial<Omit<Product, "id" | "wholesaler_id" | "created_at" | "updated_at">>,
 ): Promise<{ data: Product | null; error: any }> {
   try {
-    const { data, error } = await supabase.from("products").update(productData).eq("id", productId).select().single()
+    const { data, error } = await supabase.from("products").update(updates).eq("id", productId).select().single()
 
     return { data, error }
   } catch (error) {
@@ -88,10 +89,10 @@ export async function updateProduct(
   }
 }
 
-// Delete a product
+// Delete a product (soft delete)
 export async function deleteProduct(productId: string): Promise<{ success: boolean; error: any }> {
   try {
-    const { error } = await supabase.from("products").delete().eq("id", productId)
+    const { error } = await supabase.from("products").update({ is_active: false }).eq("id", productId)
 
     return { success: !error, error }
   } catch (error) {
@@ -117,7 +118,45 @@ export async function uploadProductImage(file: File): Promise<{ url: string | nu
 
     return { url: data.publicUrl, error: null }
   } catch (error) {
-    console.error("Error uploading image:", error)
+    console.error("Error uploading product image:", error)
     return { url: null, error }
+  }
+}
+
+// Search products
+export async function searchProducts(
+  query: string,
+  filters?: {
+    category?: string
+    minPrice?: number
+    maxPrice?: number
+    wholesalerId?: string
+  },
+): Promise<{ data: Product[] | null; error: any }> {
+  try {
+    let dbQuery = supabase.from("products").select("*").eq("is_active", true).ilike("name", `%${query}%`)
+
+    if (filters?.category) {
+      dbQuery = dbQuery.eq("category", filters.category)
+    }
+
+    if (filters?.minPrice !== undefined) {
+      dbQuery = dbQuery.gte("price", filters.minPrice)
+    }
+
+    if (filters?.maxPrice !== undefined) {
+      dbQuery = dbQuery.lte("price", filters.maxPrice)
+    }
+
+    if (filters?.wholesalerId) {
+      dbQuery = dbQuery.eq("wholesaler_id", filters.wholesalerId)
+    }
+
+    const { data, error } = await dbQuery.order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error searching products:", error)
+    return { data: null, error }
   }
 }

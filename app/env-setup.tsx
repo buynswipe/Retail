@@ -1,87 +1,39 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
-export default function EnvSetupDialog() {
-  const [open, setOpen] = useState(false)
-  const [supabaseUrl, setSupabaseUrl] = useState("")
-  const [supabaseKey, setSupabaseKey] = useState("")
+export default function EnvSetup() {
+  const [isSetup, setIsSetup] = useState(false)
 
   useEffect(() => {
-    // Check if environment variables are missing
-    const isMissingEnvVars =
-      !window.localStorage.getItem("NEXT_PUBLIC_SUPABASE_URL") ||
-      !window.localStorage.getItem("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    // Check if environment variables are set
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    // Only show the dialog if environment variables are missing
-    if (isMissingEnvVars) {
-      setOpen(true)
+    if (supabaseUrl && supabaseAnonKey) {
+      setIsSetup(true)
+    } else {
+      console.error(
+        "Environment variables not set. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      )
     }
   }, [])
 
-  const handleSave = () => {
-    // Store values in localStorage for development purposes
-    if (supabaseUrl) {
-      window.localStorage.setItem("NEXT_PUBLIC_SUPABASE_URL", supabaseUrl)
-    }
-    if (supabaseKey) {
-      window.localStorage.setItem("NEXT_PUBLIC_SUPABASE_ANON_KEY", supabaseKey)
-    }
-
-    setOpen(false)
-
-    // Reload the page to apply the new environment variables
-    window.location.reload()
-  }
-
-  const handleSkip = () => {
-    setOpen(false)
+  if (isSetup) {
+    return null
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Setup Environment Variables</DialogTitle>
-          <DialogDescription>
-            For full functionality, please provide your Supabase credentials. You can skip this step to use mock data.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="supabaseUrl">Supabase URL</Label>
-            <Input
-              id="supabaseUrl"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              placeholder="https://your-project.supabase.co"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="supabaseKey">Supabase Anon Key</Label>
-            <Input
-              id="supabaseKey"
-              value={supabaseKey}
-              onChange={(e) => setSupabaseKey(e.target.value)}
-              placeholder="your-anon-key"
-              type="password"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-between">
-          <Button variant="outline" onClick={handleSkip}>
-            Skip (Use Mock Data)
-          </Button>
-          <Button onClick={handleSave}>Save and Continue</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="fixed inset-0 bg-red-500 bg-opacity-90 z-50 flex items-center justify-center text-white p-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-2xl font-bold mb-4">Environment Setup Required</h1>
+        <p className="mb-4">Please set the following environment variables in your .env.local file:</p>
+        <pre className="bg-red-700 p-4 rounded text-left mb-4 overflow-auto">
+          NEXT_PUBLIC_SUPABASE_URL=your_supabase_url NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+          SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+        </pre>
+        <p>Then restart your development server.</p>
+      </div>
+    </div>
   )
 }

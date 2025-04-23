@@ -635,3 +635,186 @@ export async function getPlatformTaxSummary(
     return { data: null, error }
   }
 }
+
+// Get retailer's purchase history for tax purposes
+export async function getRetailerPurchases(
+  retailerId: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ data: any[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(
+          *,
+          products(*)
+        ),
+        payments(*)
+      `)
+      .eq("retailer_id", retailerId)
+      .eq("payment_status", "completed")
+      .gte("created_at", startDate)
+      .lte("created_at", endDate)
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting retailer purchases:", error)
+    return { data: null, error }
+  }
+}
+
+// Get wholesaler's sales history for tax purposes
+export async function getWholesalerSales(
+  wholesalerId: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ data: any[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(
+          *,
+          products(*)
+        ),
+        payments(*)
+      `)
+      .eq("wholesaler_id", wholesalerId)
+      .eq("payment_status", "completed")
+      .gte("created_at", startDate)
+      .lte("created_at", endDate)
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting wholesaler sales:", error)
+    return { data: null, error }
+  }
+}
+
+// Generate tax invoice for an order
+export async function generateTaxInvoice(orderId: string): Promise<{ data: any | null; error: any }> {
+  try {
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items(
+          *,
+          products(*)
+        ),
+        payments(*)
+      `)
+      .eq("id", orderId)
+      .single()
+
+    if (orderError) {
+      return { data: null, error: orderError }
+    }
+
+    // Get retailer and wholesaler details
+    const { data: retailer, error: retailerError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", order.retailer_id)
+      .single()
+
+    if (retailerError) {
+      return { data: null, error: retailerError }
+    }
+
+    const { data: wholesaler, error: wholesalerError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", order.wholesaler_id)
+      .single()
+
+    if (wholesalerError) {
+      return { data: null, error: wholesalerError }
+    }
+
+    // Combine all data
+    const invoiceData = {
+      order,
+      retailer,
+      wholesaler,
+      invoiceNumber: `INV-${order.order_number}`,
+      invoiceDate: new Date(order.created_at).toISOString().split("T")[0],
+    }
+
+    return { data: invoiceData, error: null }
+  } catch (error) {
+    console.error("Error generating tax invoice:", error)
+    return { data: null, error }
+  }
+}
+
+// Calculate GST summary for a date range
+export async function calculateGstSummary(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  startDate: string,
+  endDate: string,
+): Promise<{ data: any | null; error: any }> {
+  try {
+    let orders
+
+    if (role === "retailer") {
+      const { data, error } = await getRetailerPurchases(userId, startDate, endDate)
+      if (error) return { data: null, error }
+      orders = data
+    } else {
+      const { data, error } = await getWholesalerSales(userId, startDate, endDate)
+      if (error) return { data: null, error }
+      orders = data
+    }
+
+    if (!orders || orders.length === 0) {
+      return { data: { totalOrders: 0, totalAmount: 0, gstSummary: {} }, error: null }
+    }
+
+    // Calculate GST summary
+    const gstSummary: Record<string, { taxableAmount: number; gstAmount: number }> = {}
+    let totalAmount = 0
+
+    orders.forEach((order) => {
+      totalAmount += order.total_amount
+
+      // Process each order item
+      order.order_items.forEach((item: any) => {
+        const product = item.products
+        const taxRate = product.gst_rate || 18 // Default to 18% if not specified
+        const taxCategory = `GST ${taxRate}%`
+
+        // Calculate taxable amount and GST amount
+        const totalPrice = item.total_price
+        const gstAmount = (totalPrice * taxRate) / 100
+        const taxableAmount = totalPrice - gstAmount
+
+        // Add to summary
+        if (!gstSummary[taxCategory]) {
+          gstSummary[taxCategory] = { taxableAmount: 0, gstAmount: 0 }
+        }
+
+        gstSummary[taxCategory].taxableAmount += taxableAmount
+        gstSummary[taxCategory].gstAmount += gstAmount
+      })
+    })
+
+    return {
+      data: {
+        totalOrders: orders.length,
+        totalAmount,
+        gstSummary,
+      },
+      error: null,
+    }
+  } catch (error) {
+    console.error("Error calculating GST summary:", error)
+    return { data: null, error }
+  }
+}

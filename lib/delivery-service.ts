@@ -1,218 +1,53 @@
 import { supabase } from "./supabase-client"
-import type { Order } from "./order-service"
+import type { DeliveryAssignment } from "./supabase-client"
 
-export interface DeliveryAssignment {
-  id: string
-  order_id: string
-  delivery_partner_id: string | null
-  status: "pending" | "accepted" | "declined" | "completed"
-  delivery_charge: number
-  delivery_charge_gst: number
-  otp: string | null
-  proof_image_url: string | null
-  created_at: string
-  updated_at: string
-  order?: Order
-  delivery_partner_name?: string
-  delivery_partner_phone?: string
-}
-
-export interface CreateAssignmentData {
-  order_id: string
-  delivery_charge: number
-  delivery_charge_gst: number
-}
-
-// Generate a 6-digit OTP
-function generateOTP(): string {
+// Generate a random 6-digit OTP
+function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
-// Create a new delivery assignment
-export async function createDeliveryAssignment(
-  data: CreateAssignmentData,
-): Promise<{ data: DeliveryAssignment | null; error: any }> {
-  try {
-    // Create assignment in database
-    const { data: assignmentResult, error: assignmentError } = await supabase
-      .from("delivery_assignments")
-      .insert({
-        order_id: data.order_id,
-        delivery_partner_id: null, // Will be assigned later
-        status: "pending",
-        delivery_charge: data.delivery_charge,
-        delivery_charge_gst: data.delivery_charge_gst,
-        otp: null, // OTP will be generated when delivery partner is assigned
-      })
-      .select()
-      .single()
-
-    if (assignmentError) {
-      return { data: null, error: assignmentError }
-    }
-
-    return { data: assignmentResult, error: null }
-  } catch (error) {
-    console.error("Error creating delivery assignment:", error)
-    return { data: null, error }
-  }
-}
-
-// Get available delivery assignments by PIN code
-export async function getAvailableAssignmentsByPinCode(
-  pinCode: string,
-): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+// Get pending delivery assignments
+export async function getPendingAssignments(): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
   try {
     const { data, error } = await supabase
       .from("delivery_assignments")
-      .select(
-        `
-        *,
-        order:orders(
-          id,
-          order_number,
-          retailer_id,
-          wholesaler_id,
-          total_amount,
-          status,
-          created_at,
-          retailer:users!retailer_id(id, name, business_name, pin_code),
-          wholesaler:users!wholesaler_id(id, name, business_name, pin_code)
-        )
-      `,
-      )
+      .select("*, orders(*)")
       .eq("status", "pending")
       .is("delivery_partner_id", null)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
 
-    if (error) {
-      return { data: null, error }
-    }
-
-    // Filter assignments by PIN code (either retailer or wholesaler PIN code should match)
-    const filteredData = data.filter(
-      (assignment) =>
-        assignment.order.retailer.pin_code === pinCode || assignment.order.wholesaler.pin_code === pinCode,
-    )
-
-    return { data: filteredData, error: null }
+    return { data, error }
   } catch (error) {
-    console.error("Error fetching available assignments:", error)
-    return { data: null, error }
-  }
-}
-
-// Get assignments by delivery partner ID
-export async function getAssignmentsByDeliveryPartner(
-  deliveryPartnerId: string,
-): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("delivery_assignments")
-      .select(
-        `
-        *,
-        order:orders(
-          id,
-          order_number,
-          retailer_id,
-          wholesaler_id,
-          total_amount,
-          status,
-          created_at,
-          retailer:users!retailer_id(id, name, business_name, pin_code, phone_number),
-          wholesaler:users!wholesaler_id(id, name, business_name, pin_code, phone_number)
-        )
-      `,
-      )
-      .eq("delivery_partner_id", deliveryPartnerId)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      return { data: null, error }
-    }
-
-    return { data, error: null }
-  } catch (error) {
-    console.error("Error fetching delivery partner assignments:", error)
-    return { data: null, error }
-  }
-}
-
-// Get assignment by ID
-export async function getAssignmentById(
-  assignmentId: string,
-): Promise<{ data: DeliveryAssignment | null; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from("delivery_assignments")
-      .select(
-        `
-        *,
-        order:orders(
-          id,
-          order_number,
-          retailer_id,
-          wholesaler_id,
-          total_amount,
-          status,
-          created_at,
-          retailer:users!retailer_id(id, name, business_name, pin_code, phone_number),
-          wholesaler:users!wholesaler_id(id, name, business_name, pin_code, phone_number)
-        ),
-        delivery_partner:users(id, name, phone_number)
-      `,
-      )
-      .eq("id", assignmentId)
-      .single()
-
-    if (error) {
-      return { data: null, error }
-    }
-
-    // Format the data to match our interface
-    const formattedData = {
-      ...data,
-      delivery_partner_name: data.delivery_partner?.name,
-      delivery_partner_phone: data.delivery_partner?.phone_number,
-    }
-
-    return { data: formattedData, error: null }
-  } catch (error) {
-    console.error("Error fetching assignment details:", error)
+    console.error("Error getting pending assignments:", error)
     return { data: null, error }
   }
 }
 
 // Accept a delivery assignment
-export async function acceptDeliveryAssignment(
+export async function acceptAssignment(
   assignmentId: string,
   deliveryPartnerId: string,
 ): Promise<{ success: boolean; error: any }> {
   try {
-    // Generate OTP for delivery verification
-    const otp = generateOTP()
-
     const { error } = await supabase
       .from("delivery_assignments")
       .update({
         delivery_partner_id: deliveryPartnerId,
         status: "accepted",
-        otp,
-        updated_at: new Date().toISOString(),
+        otp: generateOtp(),
       })
       .eq("id", assignmentId)
-      .eq("status", "pending") // Only accept if still pending
+      .eq("status", "pending")
 
     return { success: !error, error }
   } catch (error) {
-    console.error("Error accepting delivery assignment:", error)
+    console.error("Error accepting assignment:", error)
     return { success: false, error }
   }
 }
 
 // Decline a delivery assignment
-export async function declineDeliveryAssignment(
+export async function declineAssignment(
   assignmentId: string,
   deliveryPartnerId: string,
 ): Promise<{ success: boolean; error: any }> {
@@ -221,70 +56,101 @@ export async function declineDeliveryAssignment(
       .from("delivery_assignments")
       .update({
         status: "declined",
-        updated_at: new Date().toISOString(),
       })
       .eq("id", assignmentId)
       .eq("delivery_partner_id", deliveryPartnerId)
 
     return { success: !error, error }
   } catch (error) {
-    console.error("Error declining delivery assignment:", error)
+    console.error("Error declining assignment:", error)
     return { success: false, error }
   }
 }
 
-// Complete a delivery assignment
-export async function completeDeliveryAssignment(
-  assignmentId: string,
+// Get active assignments for a delivery partner
+export async function getActiveAssignments(
   deliveryPartnerId: string,
-  verificationOTP: string,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("delivery_assignments")
+      .select("*, orders(*)")
+      .eq("delivery_partner_id", deliveryPartnerId)
+      .eq("status", "accepted")
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting active assignments:", error)
+    return { data: null, error }
+  }
+}
+
+// Get assignment history for a delivery partner
+export async function getAssignmentHistory(
+  deliveryPartnerId: string,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("delivery_assignments")
+      .select("*, orders(*)")
+      .eq("delivery_partner_id", deliveryPartnerId)
+      .in("status", ["completed", "declined"])
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting assignment history:", error)
+    return { data: null, error }
+  }
+}
+
+// Complete a delivery assignment
+export async function completeAssignment(
+  assignmentId: string,
+  otp: string,
   proofImageUrl?: string,
 ): Promise<{ success: boolean; error: any }> {
   try {
-    // First, verify the assignment and OTP
+    // Verify OTP
     const { data: assignment, error: fetchError } = await supabase
       .from("delivery_assignments")
-      .select("*")
+      .select("otp, order_id")
       .eq("id", assignmentId)
-      .eq("delivery_partner_id", deliveryPartnerId)
-      .eq("status", "accepted")
       .single()
 
     if (fetchError) {
       return { success: false, error: fetchError }
     }
 
-    // Verify OTP
-    if (assignment.otp !== verificationOTP) {
-      return { success: false, error: { message: "Invalid OTP. Please try again." } }
+    if (assignment.otp !== otp) {
+      return { success: false, error: "Invalid OTP. Please try again." }
     }
 
     // Update assignment status
-    const { error: updateError } = await supabase
-      .from("delivery_assignments")
-      .update({
-        status: "completed",
-        proof_image_url: proofImageUrl,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", assignmentId)
+    const updates: any = {
+      status: "completed",
+    }
+
+    if (proofImageUrl) {
+      updates.proof_image_url = proofImageUrl
+    }
+
+    const { error: updateError } = await supabase.from("delivery_assignments").update(updates).eq("id", assignmentId)
 
     if (updateError) {
       return { success: false, error: updateError }
     }
 
-    // Update order status to delivered
+    // Update order status
     const { error: orderError } = await supabase
       .from("orders")
-      .update({
-        status: "delivered",
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status: "delivered" })
       .eq("id", assignment.order_id)
 
     return { success: !orderError, error: orderError }
   } catch (error) {
-    console.error("Error completing delivery assignment:", error)
+    console.error("Error completing assignment:", error)
     return { success: false, error }
   }
 }
@@ -311,36 +177,62 @@ export async function uploadDeliveryProof(file: File): Promise<{ url: string | n
   }
 }
 
-// Get delivery assignment for an order
+// Get assignments by delivery partner ID
+export async function getAssignmentsByDeliveryPartner(
+  deliveryPartnerId: string,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("delivery_assignments")
+      .select("*, orders(*)")
+      .eq("delivery_partner_id", deliveryPartnerId)
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting delivery partner assignments:", error)
+    return { data: null, error }
+  }
+}
+
+// Get available assignments by pin code
+export async function getAvailableAssignmentsByPinCode(
+  pinCode: string,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("delivery_assignments")
+      .select("*, orders!inner(*)")
+      .eq("status", "pending")
+      .is("delivery_partner_id", null)
+      .ilike("orders.delivery_pin_code", pinCode)
+      .order("created_at", { ascending: true })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting available assignments by pin code:", error)
+    return { data: null, error }
+  }
+}
+
+// Accept delivery assignment (alias for acceptAssignment for compatibility)
+export async function acceptDeliveryAssignment(
+  assignmentId: string,
+  deliveryPartnerId: string,
+): Promise<{ success: boolean; error: any }> {
+  return acceptAssignment(assignmentId, deliveryPartnerId)
+}
+
+// Get delivery assignment by order ID
 export async function getDeliveryAssignmentByOrderId(
   orderId: string,
 ): Promise<{ data: DeliveryAssignment | null; error: any }> {
   try {
-    const { data, error } = await supabase
-      .from("delivery_assignments")
-      .select(
-        `
-        *,
-        delivery_partner:users(id, name, phone_number)
-      `,
-      )
-      .eq("order_id", orderId)
-      .single()
+    const { data, error } = await supabase.from("delivery_assignments").select("*").eq("order_id", orderId).single()
 
-    if (error) {
-      return { data: null, error }
-    }
-
-    // Format the data to match our interface
-    const formattedData = {
-      ...data,
-      delivery_partner_name: data.delivery_partner?.name,
-      delivery_partner_phone: data.delivery_partner?.phone_number,
-    }
-
-    return { data: formattedData, error: null }
+    return { data, error }
   } catch (error) {
-    console.error("Error fetching delivery assignment for order:", error)
+    console.error("Error getting delivery assignment by order ID:", error)
     return { data: null, error }
   }
 }

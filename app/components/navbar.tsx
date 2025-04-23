@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import { TranslationProvider, useTranslation } from "./translation-provider"
 import LanguageToggle from "./language-toggle"
+import ThemeToggle from "./theme-toggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +30,6 @@ import {
   CreditCard,
   FileText,
   Bell,
-  BarChart,
 } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
@@ -69,7 +69,6 @@ function NavbarContent() {
         { href: "/retailer/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
         { href: "/retailer/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-        { href: "/retailer/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" /> },
       ]
     } else if (isWholesalerPage) {
       return [
@@ -79,7 +78,6 @@ function NavbarContent() {
         { href: "/wholesaler/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
         { href: "/wholesaler/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-        { href: "/wholesaler/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" /> },
       ]
     } else if (isDeliveryPage) {
       return [
@@ -88,7 +86,6 @@ function NavbarContent() {
         { href: "/delivery/active", label: t("Active Deliveries"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/delivery/history", label: t("History"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-        { href: "/delivery/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" /> },
       ]
     } else if (isAdminPage) {
       return [
@@ -96,7 +93,6 @@ function NavbarContent() {
         { href: "/admin/users", label: t("Users"), icon: <User className="h-5 w-5 mr-2" /> },
         { href: "/admin/orders", label: t("Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/admin/settings", label: t("Settings"), icon: <Settings className="h-5 w-5 mr-2" /> },
-        { href: "/admin/analytics", label: t("Analytics"), icon: <BarChart className="h-5 w-5 mr-2" /> },
       ]
     } else if (isChatPage) {
       return [
@@ -143,14 +139,14 @@ function NavbarContent() {
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
-        isScrolled || !isHomePage ? "bg-white shadow-sm" : "bg-transparent"
+        isScrolled || !isHomePage ? "bg-background border-b" : "bg-transparent"
       }`}
     >
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <span className="text-xl font-bold text-blue-600">RetailBandhu</span>
+              <span className="text-xl font-bold text-primary">RetailBandhu</span>
             </Link>
           </div>
 
@@ -161,7 +157,7 @@ function NavbarContent() {
                 key={link.href}
                 href={link.href}
                 className={`px-3 py-2 text-sm font-medium rounded-md ${
-                  pathname === link.href ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-100"
+                  pathname === link.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                 }`}
               >
                 {link.label}
@@ -173,6 +169,8 @@ function NavbarContent() {
             {user && <NotificationBell />}
 
             <LanguageToggle />
+
+            <ThemeToggle />
 
             {user && user.role === "retailer" && (
               <Link href="/retailer/checkout">
@@ -191,7 +189,7 @@ function NavbarContent() {
             )}
 
             {isLoading ? (
-              <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse"></div>
+              <div className="h-8 w-8 rounded-full bg-muted animate-pulse"></div>
             ) : user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -206,7 +204,7 @@ function NavbarContent() {
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
                       <span>{user.name || "User"}</span>
-                      <span className="text-xs text-gray-500">{user.role}</span>
+                      <span className="text-xs text-muted-foreground">{user.role}</span>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -257,7 +255,7 @@ function NavbarContent() {
                 <SheetContent side="right">
                   <div className="flex flex-col h-full">
                     <div className="flex items-center justify-between py-4">
-                      <span className="text-lg font-bold text-blue-600">RetailBandhu</span>
+                      <span className="text-lg font-bold text-primary">RetailBandhu</span>
                       <SheetTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
                           <X className="h-4 w-4" />
@@ -270,7 +268,7 @@ function NavbarContent() {
                           key={link.href}
                           href={link.href}
                           className={`px-3 py-2 text-sm font-medium rounded-md flex items-center ${
-                            pathname === link.href ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-100"
+                            pathname === link.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                           }`}
                         >
                           {link.icon}
@@ -288,7 +286,7 @@ function NavbarContent() {
                             </Avatar>
                             <div>
                               <p className="text-sm font-medium">{user.name || "User"}</p>
-                              <p className="text-xs text-gray-500">{user.role}</p>
+                              <p className="text-xs text-muted-foreground">{user.role}</p>
                             </div>
                           </div>
                           <Button

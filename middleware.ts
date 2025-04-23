@@ -1,31 +1,70 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
-// This function can be marked `async` if using `await` inside
-export function middleware(request: NextRequest) {
-  // Get the pathname
-  const path = request.nextUrl.pathname
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req, res })
 
-  // Define public paths that don't require authentication
-  const isPublicPath = path === "/" || path === "/login" || path === "/signup" || path.startsWith("/onboarding/")
+  // Check if user is authenticated
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  // Check if user is logged in
-  const hasAuthCookie = request.cookies.has("currentUser")
+  // Get the pathname from the URL
+  const path = req.nextUrl.pathname
 
-  // If trying to access a protected route without being logged in
-  if (!isPublicPath && !hasAuthCookie) {
-    return NextResponse.redirect(new URL("/login", request.url))
+  // Public routes that don't require authentication
+  const publicRoutes = ["/", "/login", "/signup", "/about", "/contact", "/privacy", "/terms"]
+
+  // Check if the current path is a public route
+  const isPublicRoute = publicRoutes.some((route) => path === route || path.startsWith("/api/"))
+
+  // If not authenticated and not a public route, redirect to login
+  if (!session && !isPublicRoute) {
+    const redirectUrl = new URL("/login", req.url)
+    redirectUrl.searchParams.set("redirectTo", path)
+    return NextResponse.redirect(redirectUrl)
   }
 
-  // If trying to access login/signup while logged in
-  if ((path === "/login" || path === "/signup") && hasAuthCookie) {
-    return NextResponse.redirect(new URL("/", request.url))
+  // If authenticated, check role-based access
+  if (session) {
+    // Get user role from custom claims
+    const { data: userData } = await supabase.from("users").select("role").eq("id", session.user.id).single()
+
+    const role = userData?.role
+
+    // Role-based route protection
+    if (path.startsWith("/admin") && role !== "admin") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url))
+    }
+
+    if (path.startsWith("/retailer") && role !== "retailer") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url))
+    }
+
+    if (path.startsWith("/wholesaler") && role !== "wholesaler") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url))
+    }
+
+    if (path.startsWith("/delivery") && role !== "delivery") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url))
+    }
   }
 
-  return NextResponse.next()
+  return res
 }
 
-// See "Matching Paths" below to learn more
+// Specify which routes this middleware should run on
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  matcher: [
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     * - public files
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)",
+  ],
 }

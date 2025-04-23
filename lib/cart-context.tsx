@@ -1,7 +1,9 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { Product } from "./product-service"
+import type React from "react"
+
+import { createContext, useContext, useState, useEffect } from "react"
+import type { Product } from "./supabase-client"
 
 export interface CartItem {
   product: Product
@@ -11,38 +13,43 @@ export interface CartItem {
 interface CartContextType {
   items: CartItem[]
   wholesalerId: string | null
-  wholesalerName: string | null
   addItem: (product: Product, quantity: number) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
-  setWholesaler: (id: string, name: string) => void
+  setWholesalerId: (id: string | null) => void
   totalItems: number
   totalAmount: number
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined)
+const CartContext = createContext<CartContextType>({
+  items: [],
+  wholesalerId: null,
+  addItem: () => {},
+  removeItem: () => {},
+  updateQuantity: () => {},
+  clearCart: () => {},
+  setWholesalerId: () => {},
+  totalItems: 0,
+  totalAmount: 0,
+})
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [wholesalerId, setWholesalerId] = useState<string | null>(null)
-  const [wholesalerName, setWholesalerName] = useState<string | null>(null)
 
-  // Load cart from localStorage on initial render
+  // Load cart from localStorage on mount
   useEffect(() => {
     try {
       const savedCart = localStorage.getItem("cart")
       const savedWholesalerId = localStorage.getItem("wholesalerId")
-      const savedWholesalerName = localStorage.getItem("wholesalerName")
 
       if (savedCart) {
         setItems(JSON.parse(savedCart))
       }
+
       if (savedWholesalerId) {
         setWholesalerId(savedWholesalerId)
-      }
-      if (savedWholesalerName) {
-        setWholesalerName(savedWholesalerName)
       }
     } catch (error) {
       console.error("Error loading cart from localStorage:", error)
@@ -58,7 +65,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items])
 
-  // Save wholesaler info to localStorage whenever it changes
+  // Save wholesalerId to localStorage whenever it changes
   useEffect(() => {
     try {
       if (wholesalerId) {
@@ -66,72 +73,83 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem("wholesalerId")
       }
-
-      if (wholesalerName) {
-        localStorage.setItem("wholesalerName", wholesalerName)
-      } else {
-        localStorage.removeItem("wholesalerName")
-      }
     } catch (error) {
-      console.error("Error saving wholesaler info to localStorage:", error)
+      console.error("Error saving wholesalerId to localStorage:", error)
     }
-  }, [wholesalerId, wholesalerName])
+  }, [wholesalerId])
 
+  // Add item to cart
   const addItem = (product: Product, quantity: number) => {
-    setItems((prevItems) => {
-      // Check if the product is already in the cart
-      const existingItemIndex = prevItems.findIndex((item) => item.product.id === product.id)
+    // Check if product is from the same wholesaler
+    if (wholesalerId && product.wholesaler_id !== wholesalerId) {
+      // Clear cart if adding product from a different wholesaler
+      setItems([{ product, quantity }])
+      setWholesalerId(product.wholesaler_id)
+      return
+    }
 
-      if (existingItemIndex >= 0) {
-        // Update quantity if product already exists
-        const updatedItems = [...prevItems]
-        updatedItems[existingItemIndex].quantity += quantity
-        return updatedItems
+    setItems((prevItems) => {
+      const existingItem = prevItems.find((item) => item.product.id === product.id)
+
+      if (existingItem) {
+        // Update quantity if item already exists
+        return prevItems.map((item) =>
+          item.product.id === product.id ? { ...item, quantity: item.quantity + quantity } : item,
+        )
       } else {
         // Add new item
         return [...prevItems, { product, quantity }]
       }
     })
+
+    // Set wholesalerId if not already set
+    if (!wholesalerId) {
+      setWholesalerId(product.wholesaler_id)
+    }
   }
 
+  // Remove item from cart
   const removeItem = (productId: string) => {
     setItems((prevItems) => prevItems.filter((item) => item.product.id !== productId))
+
+    // Clear wholesalerId if cart is empty
+    if (items.length === 1 && items[0].product.id === productId) {
+      setWholesalerId(null)
+    }
   }
 
+  // Update item quantity
   const updateQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(productId)
+      return
+    }
+
     setItems((prevItems) => prevItems.map((item) => (item.product.id === productId ? { ...item, quantity } : item)))
   }
 
+  // Clear cart
   const clearCart = () => {
     setItems([])
     setWholesalerId(null)
-    setWholesalerName(null)
   }
 
-  const setWholesaler = (id: string, name: string) => {
-    // If changing wholesaler, clear the cart
-    if (wholesalerId && wholesalerId !== id) {
-      setItems([])
-    }
-    setWholesalerId(id)
-    setWholesalerName(name)
-  }
+  // Calculate total items
+  const totalItems = items.reduce((total, item) => total + item.quantity, 0)
 
-  // Calculate total items and amount
-  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
-  const totalAmount = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  // Calculate total amount
+  const totalAmount = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
 
   return (
     <CartContext.Provider
       value={{
         items,
         wholesalerId,
-        wholesalerName,
         addItem,
         removeItem,
         updateQuantity,
         clearCart,
-        setWholesaler,
+        setWholesalerId,
         totalItems,
         totalAmount,
       }}
@@ -142,9 +160,5 @@ export function CartProvider({ children }: { children: ReactNode }) {
 }
 
 export function useCart() {
-  const context = useContext(CartContext)
-  if (context === undefined) {
-    throw new Error("useCart must be used within a CartProvider")
-  }
-  return context
+  return useContext(CartContext)
 }

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { ShoppingBag, Clock, FileText, Package, CreditCard, ShoppingCart, User, BarChart } from "lucide-react"
+import { ShoppingBag, Clock, FileText, Package, CreditCard, ShoppingCart, User } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useRouter } from "next/navigation"
@@ -109,22 +109,6 @@ function WholesalerDashboardContent() {
               <CreditCard className="h-8 w-8 text-green-500" />
             </div>
           </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Analytics</CardTitle>
-            <BarChart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Business Insights</div>
-            <p className="text-xs text-muted-foreground">Monitor sales and inventory</p>
-          </CardContent>
-          <CardFooter>
-            <Link href="/wholesaler/analytics" className="w-full">
-              <Button className="w-full">View Analytics</Button>
-            </Link>
-          </CardFooter>
         </Card>
 
         <Card>

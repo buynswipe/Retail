@@ -29,6 +29,7 @@ import {
   CreditCard,
   FileText,
   Bell,
+  BarChart4,
 } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
@@ -68,6 +69,7 @@ function NavbarContent() {
         { href: "/retailer/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
         { href: "/retailer/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
+        { href: "/retailer/analytics", label: t("Analytics"), icon: <BarChart4 className="h-5 w-5 mr-2" /> },
       ]
     } else if (isWholesalerPage) {
       return [
@@ -77,6 +79,7 @@ function NavbarContent() {
         { href: "/wholesaler/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
         { href: "/wholesaler/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
+        { href: "/wholesaler/analytics", label: t("Analytics"), icon: <BarChart4 className="h-5 w-5 mr-2" /> },
       ]
     } else if (isDeliveryPage) {
       return [
@@ -85,6 +88,7 @@ function NavbarContent() {
         { href: "/delivery/active", label: t("Active Deliveries"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/delivery/history", label: t("History"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
+        { href: "/delivery/analytics", label: t("Analytics"), icon: <BarChart4 className="h-5 w-5 mr-2" },
       ]
     } else if (isAdminPage) {
       return [
@@ -92,6 +96,7 @@ function NavbarContent() {
         { href: "/admin/users", label: t("Users"), icon: <User className="h-5 w-5 mr-2" /> },
         { href: "/admin/orders", label: t("Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
         { href: "/admin/settings", label: t("Settings"), icon: <Settings className="h-5 w-5 mr-2" /> },
+        { href: "/admin/analytics", label: t("Analytics"), icon: <BarChart4 className="h-5 w-5 mr-2" },
       ]
     } else if (isChatPage) {
       return [

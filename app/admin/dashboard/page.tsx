@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TranslationProvider } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
@@ -18,6 +18,7 @@ import {
   ChevronUp,
   CheckCircle,
   XCircle,
+  BarChart4,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { PlatformSettings, User } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("users")
@@ -159,6 +161,22 @@ export default function AdminDashboard() {
                 Logout
               </Button>
             </div>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Platform Analytics</CardTitle>
+                <BarChart4 className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">System Metrics</div>
+                <p className="text-xs text-muted-foreground">Comprehensive platform insights</p>
+              </CardContent>
+              <CardFooter>
+                <Link href="/admin/analytics" className="w-full">
+                  <Button className="w-full">View Analytics</Button>
+                </Link>
+              </CardFooter>
+            </Card>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid grid-cols-5 mb-8">

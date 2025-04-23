@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart, CreditCard } from "lucide-react"
+import { Search, MapPin, ShoppingBag, Clock, FileText, ShoppingCart, CreditCard, BarChart4 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -158,6 +158,21 @@ function RetailerDashboardContent() {
             <span>Chat</span>
           </Link>
         </Button>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Analytics</CardTitle>
+            <BarChart4 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">View Reports</div>
+            <p className="text-xs text-muted-foreground">Track your business performance</p>
+          </CardContent>
+          <CardFooter>
+            <Link href="/retailer/analytics" className="w-full">
+              <Button className="w-full">View Analytics</Button>
+            </Link>
+          </CardFooter>
+        </Card>
       </div>
 
       {/* Search Section */}

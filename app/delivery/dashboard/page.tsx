@@ -1,9 +1,9 @@
 "use client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Truck, Package, FileText, CreditCard } from "lucide-react"
+import { Truck, Package, FileText, CreditCard, BarChart4 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
@@ -91,6 +91,22 @@ function DeliveryDashboardContent() {
               <Truck className="h-8 w-8 text-orange-500" />
             </div>
           </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Analytics</CardTitle>
+            <BarChart4 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Performance</div>
+            <p className="text-xs text-muted-foreground">Track earnings and deliveries</p>
+          </CardContent>
+          <CardFooter>
+            <Link href="/delivery/analytics" className="w-full">
+              <Button className="w-full">View Analytics</Button>
+            </Link>
+          </CardFooter>
         </Card>
       </div>
 

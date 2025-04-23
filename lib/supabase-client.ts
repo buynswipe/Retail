@@ -8,35 +8,11 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
-// Check if we're in a browser environment
-const isBrowser = typeof window !== "undefined"
-
-// Validate required environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
-  // Only log in browser to avoid SSR issues
-  if (isBrowser) {
-    console.error(`Missing required environment variables for Supabase client:
-    NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? "Set" : "Missing"}
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: ${supabaseAnonKey ? "Set" : "Missing"}
-    `)
-  }
-}
-
-// Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-})
+// Supabase client with error handling
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Supabase admin client (for server-side operations)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: true,
-  },
-})
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
 
 // Database types
 export interface User {

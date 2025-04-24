@@ -3,7 +3,12 @@
 import type React from "react"
 
 import { createContext, useContext, useState, useEffect } from "react"
-import { getUserNotifications, getUnreadNotificationsCount, markNotificationAsRead } from "./notification-service"
+import {
+  getUserNotifications,
+  getUnreadNotificationsCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from "./notification-service"
 import { useAuth } from "./auth-context"
 import type { Notification } from "./supabase-client"
 
@@ -13,6 +18,7 @@ interface NotificationContextType {
   isLoading: boolean
   refreshNotifications: () => Promise<void>
   markAsRead: (notificationId: string) => Promise<void>
+  markAllAsRead: () => Promise<void>
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -21,6 +27,7 @@ const NotificationContext = createContext<NotificationContextType>({
   isLoading: false,
   refreshNotifications: async () => {},
   markAsRead: async () => {},
+  markAllAsRead: async () => {},
 })
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
@@ -83,6 +90,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }
 
+  // Mark all notifications as read
+  const markAllAsRead = async () => {
+    if (!user) return
+
+    try {
+      const { success } = await markAllNotificationsAsRead(user.id)
+
+      if (success) {
+        // Update local state
+        setNotifications((prevNotifications) =>
+          prevNotifications.map((notification) => ({ ...notification, is_read: true })),
+        )
+
+        // Update unread count
+        setUnreadCount(0)
+      }
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error)
+    }
+  }
+
   return (
     <NotificationContext.Provider
       value={{
@@ -91,6 +119,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         isLoading,
         refreshNotifications,
         markAsRead,
+        markAllAsRead,
       }}
     >
       {children}

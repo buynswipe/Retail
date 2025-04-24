@@ -3,16 +3,11 @@ import { createClient } from "@supabase/supabase-js"
 // Define user roles
 export type UserRole = "admin" | "retailer" | "wholesaler" | "delivery"
 
-// Get environment variables with fallbacks
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-
-// Supabase client with error handling
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Supabase client
+export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 // Supabase admin client (for server-side operations)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
+export const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 // Database types
 export interface User {

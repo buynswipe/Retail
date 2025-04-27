@@ -16,7 +16,13 @@ export const createClient = cache(() => {
 })
 
 // Create a server-side Supabase client with cookies
+// This should only be used in Server Components
 export const createServerSupabaseClient = () => {
+  // This function should only be called in server components
+  if (typeof window !== "undefined") {
+    throw new Error("createServerSupabaseClient should only be called in Server Components")
+  }
+
   const cookieStore = cookies()
   return createServerComponentClient({ cookies: () => cookieStore })
 }

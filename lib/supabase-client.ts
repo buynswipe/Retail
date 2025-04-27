@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 // Create a standard Supabase client
 export const supabase = createClient(
@@ -20,8 +19,8 @@ export const supabaseAdmin = createClient(
   },
 )
 
-// Create a server-side Supabase client with cookies
+// Create a client-side Supabase client with cookies
+// This is safe to use in both app/ and pages/ directories
 export const createServerSupabaseClient = () => {
-  const cookieStore = cookies()
-  return createServerComponentClient({ cookies: () => cookieStore })
+  return createClientComponentClient()
 }

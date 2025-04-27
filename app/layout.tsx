@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { DevModeIndicator } from "./components/dev-mode-indicator"
 import { AuthProvider } from "@/lib/auth-context"
 import { DemoAccountSetup } from "./components/demo-account-setup"
+import { ClientErrorBoundary } from "./components/client-error-boundary"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -19,14 +20,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-          <AuthProvider>
-            <DemoAccountSetup />
-            {children}
-            <Toaster />
-            <DevModeIndicator />
-          </AuthProvider>
-        </ThemeProvider>
+        <ClientErrorBoundary>
+          <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+            <AuthProvider>
+              <DemoAccountSetup />
+              {children}
+              <Toaster />
+              <DevModeIndicator />
+            </AuthProvider>
+          </ThemeProvider>
+        </ClientErrorBoundary>
       </body>
     </html>
   )

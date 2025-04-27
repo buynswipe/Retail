@@ -18,6 +18,9 @@ import { Toaster } from "@/components/ui/toaster"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { isDemoAccount } from "@/lib/demo-auth"
+import { Suspense } from "react"
+import LoginFallback from "./fallback"
+import { ErrorBoundary } from "react-error-boundary"
 
 function LoginForm() {
   const { t, language } = useTranslation()
@@ -339,7 +342,11 @@ export default function LoginPage() {
       <div className="flex flex-col min-h-screen">
         <Navbar />
         <main className="flex-grow pt-16 pb-16">
-          <LoginForm />
+          <ErrorBoundary FallbackComponent={() => <LoginFallback />}>
+            <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+              <LoginForm />
+            </Suspense>
+          </ErrorBoundary>
         </main>
         <Footer />
       </div>

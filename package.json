@@ -62,7 +62,8 @@
     "country-flag-icons": "latest",
     "@supabase/auth-helpers-nextjs": "latest",
     "fs": "latest",
-    "path": "latest"
+    "path": "latest",
+    "react-error-boundary": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

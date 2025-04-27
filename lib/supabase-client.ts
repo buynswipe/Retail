@@ -24,3 +24,6 @@ export const supabaseAdmin = createClient(
 export const createServerSupabaseClient = () => {
   return createClientComponentClient()
 }
+
+// Export the createClientComponentClient directly for use in client components
+export { createClientComponentClient }

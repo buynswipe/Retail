@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { supabase } from "./supabase"
+import { supabase } from "./supabase-client"
 import { useRouter } from "next/navigation"
 
 export type UserData = {

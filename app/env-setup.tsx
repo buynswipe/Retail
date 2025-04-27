@@ -45,7 +45,16 @@ export default function EnvSetup() {
           ))}
         </ul>
         <p className="mb-4">Please add these variables to your Vercel project settings or .env.local file.</p>
-        <p className="text-sm text-gray-600">
+        <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-md">
+          <h2 className="font-bold">How to fix this:</h2>
+          <ol className="list-decimal pl-5 mt-2 text-left">
+            <li>Go to your Vercel project settings</li>
+            <li>Navigate to the Environment Variables section</li>
+            <li>Add each of the missing variables listed above</li>
+            <li>Redeploy your application</li>
+          </ol>
+        </div>
+        <p className="text-sm text-gray-600 mt-4">
           After adding the variables, redeploy your application or restart your development server.
         </p>
       </div>

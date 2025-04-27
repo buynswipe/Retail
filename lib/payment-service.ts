@@ -1,186 +1,20 @@
-import { supabase } from "@/lib/supabase-client"
+import { supabase } from "./supabase-client"
+import type { Payment } from "./supabase-client"
 
-// Mark COD payment as collected
-export async function markCodPaymentCollected(
-  paymentId: string,
-  collectedById: string,
-): Promise<{ success: boolean; error: any }> {
+/**
+ * Create a new payment
+ */
+export async function createPayment(payment: Omit<Payment, "id" | "created_at" | "reference_id">) {
   try {
-    const { error } = await supabase
-      .from("payments")
-      .update({
-        payment_status: "completed",
-        payment_date: new Date().toISOString(),
-        collected_by: collectedById,
-      })
-      .eq("id", paymentId)
-      .eq("payment_method", "cod")
-
-    if (!error) {
-      // Get order ID
-      const { data: payment } = await supabase.from("payments").select("order_id").eq("id", paymentId).single()
-
-      if (payment) {
-        // Update order payment status
-        await supabase.from("orders").update({ payment_status: "completed" }).eq("id", payment.order_id)
-      }
-    }
-
-    return { success: !error, error }
-  } catch (error) {
-    console.error("Error marking COD payment as collected:", error)
-    return { success: false, error }
-  }
-}
-
-// Verify UPI payment
-export async function verifyUpiPayment(data: {
-  payment_id: string
-  transaction_id: string
-}): Promise<{ success: boolean; error: any }> {
-  try {
-    // In a real app, this would verify the transaction with a payment gateway
-    // For now, we'll just update the payment status
-
-    const { error } = await supabase
-      .from("payments")
-      .update({
-        payment_status: "completed",
-        payment_date: new Date().toISOString(),
-        transaction_id: data.transaction_id,
-      })
-      .eq("id", data.payment_id)
-      .eq("payment_method", "upi")
-
-    if (!error) {
-      // Get order ID
-      const { data: payment } = await supabase.from("payments").select("order_id").eq("id", data.payment_id).single()
-
-      if (payment) {
-        // Update order payment status
-        await supabase.from("orders").update({ payment_status: "completed" }).eq("id", payment.order_id)
-      }
-    }
-
-    return { success: !error, error }
-  } catch (error) {
-    console.error("Error verifying UPI payment:", error)
-    return { success: false, error }
-  }
-}
-
-// Get payments by user ID
-export async function getPaymentsByUserId(
-  userId: string,
-  role: "retailer" | "wholesaler",
-): Promise<{ data: any[] | null; error: any }> {
-  try {
-    // Determine the role-specific field to filter by
-    const roleField = role === "retailer" ? "retailer_id" : "wholesaler_id"
-
-    // Get payments for the user
-    const { data, error } = await supabase
-      .from("payments")
-      .select(
-        `
-        *,
-        order:orders!inner(
-          id,
-          order_number,
-          ${roleField},
-          total_amount,
-          status,
-          payment_method,
-          payment_status,
-          created_at
-        )
-      `,
-      )
-      .eq(`order.${roleField}`, userId)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
-  } catch (error) {
-    console.error("Error getting payments by user ID:", error)
-    return { data: null, error }
-  }
-}
-
-// Get payment statistics
-export async function getPaymentStatistics(
-  userId: string,
-  role: "retailer" | "wholesaler",
-): Promise<{ data: any | null; error: any }> {
-  try {
-    // Determine the role-specific field to filter by
-    const roleField = role === "retailer" ? "retailer_id" : "wholesaler_id"
-
-    // Get payments for the user
-    const { data: payments, error } = await supabase
-      .from("payments")
-      .select(
-        `
-        *,
-        order:orders!inner(
-          id,
-          ${roleField},
-          total_amount,
-          payment_status
-        )
-      `,
-      )
-      .eq(`order.${roleField}`, userId)
-
-    if (error) {
-      return { data: null, error }
-    }
-
-    // Calculate statistics
-    const totalPayments = payments.length
-    const completedPayments = payments.filter((payment) => payment.payment_status === "completed")
-    const pendingPayments = payments.filter((payment) => payment.payment_status === "pending")
-
-    const completedAmount = completedPayments.reduce((sum, payment) => sum + payment.amount, 0)
-    const pendingAmount = pendingPayments.reduce((sum, payment) => sum + payment.amount, 0)
-
-    return {
-      data: {
-        total_payments: totalPayments,
-        completed_payments: completedPayments.length,
-        pending_payments: pendingPayments.length,
-        completed_amount: completedAmount,
-        pending_amount: pendingAmount,
-      },
-      error: null,
-    }
-  } catch (error) {
-    console.error("Error getting payment statistics:", error)
-    return { data: null, error }
-  }
-}
-
-// Create a new payment
-export async function createPayment(paymentData: {
-  order_id: string
-  amount: number
-  payment_method: "cod" | "upi"
-  upi_id?: string
-}): Promise<{ data: any | null; error: any }> {
-  try {
-    // Generate reference ID
-    const referenceId = `PAY${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000)
-      .toString()
-      .padStart(3, "0")}`
+    // Generate a unique reference ID
+    const referenceId = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
     const { data, error } = await supabase
-      .from("payments")
+      .from("Payments")
       .insert({
-        order_id: paymentData.order_id,
-        amount: paymentData.amount,
-        payment_method: paymentData.payment_method,
-        payment_status: "pending",
+        ...payment,
         reference_id: referenceId,
-        upi_id: paymentData.upi_id,
+        status: payment.status || "pending",
       })
       .select()
       .single()
@@ -189,5 +23,162 @@ export async function createPayment(paymentData: {
   } catch (error) {
     console.error("Error creating payment:", error)
     return { data: null, error }
+  }
+}
+
+/**
+ * Get a payment by ID
+ */
+export async function getPaymentById(paymentId: string) {
+  try {
+    const { data, error } = await supabase.from("Payments").select("*").eq("id", paymentId).single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error fetching payment:", error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get payments by user ID
+ */
+export async function getPaymentsByUserId(userId: string, options = { limit: 50, offset: 0 }) {
+  try {
+    const { data, error, count } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact" })
+      .eq("user_id", userId)
+      .range(options.offset, options.offset + options.limit - 1)
+      .order("created_at", { ascending: false })
+
+    return { data, error, count }
+  } catch (error) {
+    console.error("Error fetching user payments:", error)
+    return { data: null, error, count: 0 }
+  }
+}
+
+/**
+ * Update payment status
+ */
+export async function updatePaymentStatus(paymentId: string, status: string) {
+  try {
+    const { data, error } = await supabase.from("Payments").update({ status }).eq("id", paymentId).select().single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error updating payment status:", error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Verify UPI payment
+ */
+export async function verifyUpiPayment(referenceId: string, transactionId: string) {
+  try {
+    // In a real implementation, this would call a payment gateway API
+    // For now, we'll simulate a successful verification
+
+    const { data, error } = await supabase
+      .from("Payments")
+      .update({
+        status: "completed",
+        transaction_id: transactionId,
+        verified_at: new Date().toISOString(),
+      })
+      .eq("reference_id", referenceId)
+      .select()
+      .single()
+
+    return {
+      data,
+      error,
+      verified: !error && data?.status === "completed",
+    }
+  } catch (error) {
+    console.error("Error verifying UPI payment:", error)
+    return { data: null, error, verified: false }
+  }
+}
+
+/**
+ * Record COD payment collection
+ */
+export async function recordCodCollection(paymentId: string, collectedBy: string) {
+  try {
+    const { data, error } = await supabase
+      .from("Payments")
+      .update({
+        status: "completed",
+        collected_by: collectedBy,
+        collected_at: new Date().toISOString(),
+      })
+      .eq("id", paymentId)
+      .eq("payment_method", "cod")
+      .select()
+      .single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error recording COD collection:", error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Alias for recordCodCollection
+ */
+export async function markCodPaymentCollected(paymentId: string, collectedBy: string) {
+  return recordCodCollection(paymentId, collectedBy)
+}
+
+/**
+ * Get payment statistics
+ */
+export async function getPaymentStatistics(userId: string) {
+  try {
+    // Get total payments
+    const { count: totalCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+
+    // Get completed payments
+    const { count: completedCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "completed")
+
+    // Get pending payments
+    const { count: pendingCount } = await supabase
+      .from("Payments")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "pending")
+
+    // Get total amount
+    const { data: totalAmountData } = await supabase.rpc("get_total_payments_amount", {
+      user_id_param: userId,
+    })
+
+    const totalAmount = totalAmountData || 0
+
+    return {
+      totalCount: totalCount || 0,
+      completedCount: completedCount || 0,
+      pendingCount: pendingCount || 0,
+      totalAmount,
+    }
+  } catch (error) {
+    console.error("Error fetching payment statistics:", error)
+    return {
+      totalCount: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      totalAmount: 0,
+    }
   }
 }

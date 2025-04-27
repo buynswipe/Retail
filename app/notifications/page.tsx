@@ -27,7 +27,7 @@ import {
 
 function NotificationsContent() {
   const { t } = useTranslation()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const { notifications, markAsRead, markAllAsRead, refreshNotifications } = useNotifications()
   const [activeTab, setActiveTab] = useState("all")
   const [notificationToDelete, setNotificationToDelete] = useState<string | null>(null)

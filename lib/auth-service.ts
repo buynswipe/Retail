@@ -1,59 +1,71 @@
-import { supabase } from "./supabase-client"
-import type { UserRole } from "./supabase-client"
+import { supabase, supabaseAdmin, type UserRole } from "./supabase"
+import { isDemoAccount, getDemoAccount } from "./demo-auth"
 
-export interface SignUpData {
-  phone: string
-  role: UserRole
-  name?: string
-  businessName?: string
-  pinCode?: string
-  gstNumber?: string
-  bankAccountNumber?: string
-  bankIfsc?: string
-  vehicleType?: "bike" | "van"
-}
-
-export interface LoginData {
-  phone: string
-}
-
-export interface VerifyOtpData {
-  phone: string
-  otp: string
-}
-
-export interface UserData {
-  id: string
-  phone: string
-  role: UserRole
-  name?: string
-  businessName?: string
-  pinCode?: string
-  isApproved: boolean
-}
-
-// Send OTP via WhatsApp (simulated)
-export async function sendOtp(phone: string): Promise<{ success: boolean; error?: string }> {
+// Send OTP via Supabase Auth (Phone or Email)
+export async function sendOtp(identifier: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // In a real app, this would call a Supabase Edge Function to send OTP via WhatsApp
-    // For now, we'll simulate success
-    console.log(`Sending OTP to ${phone}`)
+    const isEmail = identifier.includes("@")
+    console.log(`Sending OTP to ${identifier} via ${isEmail ? "email" : "phone"}`)
 
-    // For demo users, always succeed
-    if (["1234567890", "9876543210", "9876543211", "9876543212"].includes(phone)) {
+    // Check if this is a demo account
+    if (isDemoAccount(identifier)) {
+      console.log("Using demo account authentication")
       return { success: true }
     }
 
-    // Check if user exists
-    const { data, error } = await supabase.from("users").select("phone_number").eq("phone_number", phone).single()
+    // For debugging
+    if (!isEmail) {
+      // Ensure phone number is in E.164 format (+91XXXXXXXXXX)
+      // First, strip any existing formatting
+      const digits = identifier.replace(/\D/g, "")
 
-    if (error && error.code !== "PGRST116") {
-      return { success: false, error: error.message }
-    }
+      // Check if we have a valid 10-digit number
+      if (digits.length !== 10) {
+        return {
+          success: false,
+          error: "Phone number must be exactly 10 digits",
+        }
+      }
 
-    // For login, user must exist
-    if (!data) {
-      return { success: false, error: "User not found. Please sign up." }
+      // Format with country code
+      const formattedPhone = `+91${digits}`
+      console.log("Formatted phone:", formattedPhone)
+
+      // Use Supabase Auth to send OTP
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formattedPhone,
+        options: {
+          shouldCreateUser: true,
+        },
+      })
+
+      if (error) {
+        console.error("Error sending OTP:", error)
+
+        // If we get an unsupported phone provider error, suggest using a demo account
+        if (error.message.includes("unsupported phone provider")) {
+          return {
+            success: false,
+            error: "SMS delivery is not available in development mode. Please use a demo account.",
+          }
+        }
+
+        return { success: false, error: error.message }
+      }
+    } else {
+      // Handle email OTP
+      const { error } = await supabase.auth.signInWithOtp({
+        email: identifier,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+        },
+      })
+
+      if (error) {
+        console.error("Error sending OTP:", error)
+        return { success: false, error: error.message }
+      }
     }
 
     return { success: true }
@@ -63,46 +75,138 @@ export async function sendOtp(phone: string): Promise<{ success: boolean; error?
   }
 }
 
-// Verify OTP and sign in (simulated)
+// Verify OTP and sign in (Phone or Email)
 export async function verifyOtp(
-  data: VerifyOtpData,
-): Promise<{ success: boolean; userData?: UserData; error?: string }> {
+  identifier: string,
+  otp: string,
+): Promise<{ success: boolean; userData?: any; error?: string }> {
   try {
-    // In a real app, this would verify the OTP
-    // For now, we'll simulate success for demo users
+    // Check if this is a demo account
+    if (isDemoAccount(identifier)) {
+      console.log("Using demo account authentication")
+      const demoAccount = getDemoAccount(identifier)
 
-    if (!["1234567890", "9876543210", "9876543211", "9876543212"].includes(data.phone)) {
-      // For non-demo users, check if OTP is valid (always 123456 for demo)
-      if (data.otp !== "123456") {
-        return { success: false, error: "Invalid OTP. Please try again." }
+      if (!demoAccount) {
+        return { success: false, error: "Demo account not found" }
+      }
+
+      // For demo accounts, any 6-digit OTP is valid
+      if (!/^\d{6}$/.test(otp)) {
+        return { success: false, error: "Invalid OTP format. Please enter 6 digits." }
+      }
+
+      // Return demo user data
+      return {
+        success: true,
+        userData: {
+          id: `demo-${demoAccount.role}`,
+          phone: demoAccount.phone,
+          email: demoAccount.email,
+          role: demoAccount.role,
+          name: demoAccount.name,
+          businessName: demoAccount.businessName,
+          pinCode: demoAccount.pinCode,
+          isApproved: demoAccount.isApproved,
+        },
       }
     }
 
-    // Get user data
-    const { data: userData, error } = await supabase
-      .from("users")
-      .select("id, phone_number, role, name, business_name, pin_code, is_approved")
-      .eq("phone_number", data.phone)
-      .single()
+    const isEmail = identifier.includes("@")
+
+    // Format phone number correctly
+    let formattedIdentifier = identifier
+    if (!isEmail) {
+      // Remove any existing country code or extra digits
+      const cleanNumber = identifier.replace(/\D/g, "")
+      formattedIdentifier = `+91${cleanNumber}`
+    }
+
+    console.log("Verifying with identifier:", formattedIdentifier)
+
+    // Use Supabase Auth to verify OTP
+    const { data: authData, error } = await supabase.auth.verifyOtp({
+      phone: isEmail ? undefined : formattedIdentifier,
+      email: isEmail ? formattedIdentifier : undefined,
+      token: otp,
+      type: isEmail ? "email" : "sms",
+    })
 
     if (error) {
+      console.error("Error verifying OTP:", error)
       return { success: false, error: error.message }
     }
 
-    // Sign in with Supabase Auth (in a real app)
-    // For now, we'll just return the user data
+    if (!authData.user) {
+      return { success: false, error: "Failed to authenticate user." }
+    }
 
-    return {
-      success: true,
-      userData: {
-        id: userData.id,
-        phone: userData.phone_number,
-        role: userData.role as UserRole,
-        name: userData.name,
-        businessName: userData.business_name,
-        pinCode: userData.pin_code,
-        isApproved: userData.is_approved,
-      },
+    try {
+      // Use the admin client to get user profile data to bypass RLS
+      const { data: profileData, error: profileError } = await supabaseAdmin
+        .from("users")
+        .select("*")
+        .eq("id", authData.user.id)
+        .single()
+
+      if (profileError) {
+        console.error("Error fetching user profile:", profileError)
+
+        // If user doesn't exist in the users table, create a new profile
+        if (profileError.code === "PGRST116") {
+          try {
+            // Create a new user profile using the admin client
+            const { data: newProfile, error: createError } = await supabaseAdmin
+              .from("users")
+              .insert({
+                id: authData.user.id,
+                phone_number: isEmail ? null : formattedIdentifier,
+                role: "retailer", // Default role
+                is_approved: true, // Auto-approve
+                name: "", // Add empty string defaults for required fields
+                business_name: "",
+                pin_code: "",
+              })
+              .select()
+              .single()
+
+            if (createError) {
+              console.error("Error creating user profile:", createError)
+              return { success: false, error: "Failed to create user profile: " + createError.message }
+            }
+
+            return {
+              success: true,
+              userData: {
+                id: authData.user.id,
+                phone: newProfile.phone_number,
+                role: newProfile.role,
+                isApproved: newProfile.is_approved,
+              },
+            }
+          } catch (err) {
+            console.error("Exception creating user profile:", err)
+            return { success: false, error: "Exception creating user profile" }
+          }
+        }
+
+        return { success: false, error: "Failed to fetch user profile: " + profileError.message }
+      }
+
+      return {
+        success: true,
+        userData: {
+          id: profileData.id,
+          phone: profileData.phone_number,
+          role: profileData.role,
+          name: profileData.name,
+          businessName: profileData.business_name,
+          pinCode: profileData.pin_code,
+          isApproved: profileData.is_approved,
+        },
+      }
+    } catch (err) {
+      console.error("Exception in profile handling:", err)
+      return { success: false, error: "An error occurred while processing your profile" }
     }
   } catch (error) {
     console.error("Error verifying OTP:", error)
@@ -111,72 +215,127 @@ export async function verifyOtp(
 }
 
 // Sign up a new user
-export async function signUp(data: SignUpData): Promise<{ success: boolean; error?: string }> {
+export async function signUp(data: {
+  phone?: string
+  email?: string
+  role: UserRole
+  name?: string
+  businessName?: string
+  pinCode?: string
+  gstNumber?: string
+  bankAccountNumber?: string
+  bankIfsc?: string
+  vehicleType?: "bike" | "van"
+}): Promise<{ success: boolean; error?: string }> {
   try {
-    // Check if user already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from("users")
-      .select("phone_number")
-      .eq("phone_number", data.phone)
-      .single()
-
-    if (checkError && checkError.code !== "PGRST116") {
-      return { success: false, error: checkError.message }
+    // Check if phone number or email is provided
+    if (!data.phone && !data.email) {
+      return { success: false, error: "Phone number or email is required." }
     }
 
-    if (existingUser) {
-      return { success: false, error: "User with this phone number already exists." }
+    // Format phone number correctly
+    let formattedPhone = undefined
+    if (data.phone) {
+      // Clean the phone number to just digits
+      const digits = data.phone.replace(/\D/g, "")
+      formattedPhone = `+91${digits}`
+      console.log("Formatted phone for signup:", formattedPhone)
     }
 
-    // Create new user
-    const { error } = await supabase.from("users").insert({
-      phone_number: data.phone,
-      role: data.role,
-      name: data.name,
-      business_name: data.businessName,
-      pin_code: data.pinCode,
-      gst_number: data.gstNumber,
-      bank_account_number: data.bankAccountNumber,
-      bank_ifsc: data.bankIfsc,
-      vehicle_type: data.vehicleType,
-      is_approved: data.role === "retailer", // Auto-approve retailers
-    })
+    try {
+      // Check if user already exists
+      if (formattedPhone) {
+        const { data: phoneUser, error: phoneError } = await supabaseAdmin
+          .from("users")
+          .select("phone_number")
+          .eq("phone_number", formattedPhone)
+          .maybeSingle()
 
-    if (error) {
-      return { success: false, error: error.message }
+        if (phoneError && phoneError.code !== "PGRST116") {
+          console.error("Error checking user by phone:", phoneError)
+          return { success: false, error: "Failed to check if user exists." }
+        }
+
+        if (phoneUser) {
+          return { success: false, error: "User with this phone number already exists." }
+        }
+      } else if (data.email) {
+        const { data: emailUser, error: emailError } = await supabaseAdmin
+          .from("users")
+          .select("email")
+          .eq("email", data.email)
+          .maybeSingle()
+
+        if (emailError && emailError.code !== "PGRST116") {
+          console.error("Error checking user by email:", emailError)
+          return { success: false, error: "Failed to check if user exists." }
+        }
+
+        if (emailUser) {
+          return { success: false, error: "User with this email already exists." }
+        }
+      }
+
+      // First, create the auth user with phone or email authentication
+      let authData
+      let authError
+
+      if (formattedPhone) {
+        console.log("Creating user with phone:", formattedPhone)
+        const authResult = await supabaseAdmin.auth.admin.createUser({
+          phone: formattedPhone,
+          phone_confirm: true, // Auto-confirm for simplicity
+        })
+        authData = authResult.data
+        authError = authResult.error
+      } else if (data.email) {
+        console.log("Creating user with email:", data.email)
+        const authResult = await supabaseAdmin.auth.admin.createUser({
+          email: data.email,
+          email_confirm: true, // Auto-confirm for simplicity
+        })
+        authData = authResult.data
+        authError = authResult.error
+      }
+
+      if (authError) {
+        console.error("Error creating auth user:", authError)
+        return { success: false, error: authError.message }
+      }
+
+      if (!authData.user) {
+        return { success: false, error: "Failed to create user." }
+      }
+
+      // Then, create the user profile using the admin client to bypass RLS
+      const { error: profileError } = await supabaseAdmin.from("users").insert({
+        id: authData.user.id,
+        phone_number: formattedPhone,
+        role: data.role,
+        name: data.name || "",
+        business_name: data.businessName || "",
+        pin_code: data.pinCode || "",
+        gst_number: data.gstNumber || "",
+        bank_account_number: data.bankAccountNumber || "",
+        bank_ifsc: data.bankIfsc || "",
+        vehicle_type: data.vehicleType || null,
+        is_approved: data.role === "retailer", // Auto-approve retailers
+      })
+
+      if (profileError) {
+        console.error("Error creating user profile:", profileError)
+        return { success: false, error: "Failed to create user profile: " + profileError.message }
+      }
+
+      return { success: true }
+    } catch (err) {
+      console.error("Exception in user creation:", err)
+      return { success: false, error: "An error occurred during signup" }
     }
-
-    return { success: true }
   } catch (error) {
     console.error("Error signing up:", error)
     return { success: false, error: "Failed to sign up. Please try again." }
   }
 }
 
-// Get current user
-export async function getCurrentUser(): Promise<UserData | null> {
-  try {
-    // In a real app, this would use Supabase Auth
-    // For now, we'll check localStorage
-    const storedUser = localStorage.getItem("currentUser")
-    if (!storedUser) return null
-
-    return JSON.parse(storedUser) as UserData
-  } catch (error) {
-    console.error("Error getting current user:", error)
-    return null
-  }
-}
-
-// Sign out
-export async function signOut(): Promise<{ success: boolean; error?: string }> {
-  try {
-    // In a real app, this would use Supabase Auth
-    // For now, we'll just clear localStorage
-    localStorage.removeItem("currentUser")
-    return { success: true }
-  } catch (error) {
-    console.error("Error signing out:", error)
-    return { success: false, error: "Failed to sign out. Please try again." }
-  }
-}
+// Other auth functions remain the same...

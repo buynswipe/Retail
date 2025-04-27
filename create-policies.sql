@@ -3,13 +3,17 @@
 CREATE POLICY users_read_own ON users
   FOR SELECT USING (auth.uid() = id);
 
--- Admin can read all users
+-- Admin can read all users (fixed to avoid recursion)
 CREATE POLICY admin_read_all_users ON users
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM auth.users WHERE auth.uid() = id AND raw_user_meta_data->>'role' = 'admin'
     )
   );
+
+-- Users can update their own data
+CREATE POLICY users_update_own ON users
+  FOR UPDATE USING (auth.uid() = id);
 
 -- Products can be read by anyone
 CREATE POLICY products_read_all ON products
@@ -29,7 +33,7 @@ CREATE POLICY orders_read_involved ON orders
       WHERE order_id = orders.id AND delivery_partner_id = auth.uid()
     ) OR
     EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM auth.users WHERE auth.uid() = id AND raw_user_meta_data->>'role' = 'admin'
     )
   );
 
@@ -42,6 +46,6 @@ CREATE POLICY payments_read_involved ON payments
     ) OR
     collected_by = auth.uid() OR
     EXISTS (
-      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM auth.users WHERE auth.uid() = id AND raw_user_meta_data->>'role' = 'admin'
     )
   );

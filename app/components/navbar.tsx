@@ -1,329 +1,193 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
-import { TranslationProvider, useTranslation } from "./translation-provider"
+import { useTranslation } from "./translation-provider"
 import LanguageToggle from "./language-toggle"
-import ThemeToggle from "./theme-toggle"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Menu,
-  X,
-  ShoppingCart,
-  LogOut,
-  User,
-  Settings,
-  Home,
-  Package,
-  MessageSquare,
-  CreditCard,
-  FileText,
-  Bell,
-} from "lucide-react"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Badge } from "@/components/ui/badge"
-import { useCart } from "@/lib/cart-context"
+import { ThemeToggle } from "@/app/components/theme-toggle"
 import NotificationBell from "./notification-bell"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Menu } from "lucide-react"
+import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
-function NavbarContent() {
+export default function Navbar() {
+  const { user, setUser } = useAuth()
   const { t } = useTranslation()
-  const { user, logout, isLoading } = useAuth()
   const pathname = usePathname()
-  const [isScrolled, setIsScrolled] = useState(false)
-  const { items } = useCart()
+  const [open, setOpen] = useState(false)
+  const router = useRouter()
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10)
+  // Skip rendering navbar on certain pages
+  if (pathname === "/unauthorized") return null
+
+  const isActive = (path: string) => {
+    return pathname === path || pathname?.startsWith(`${path}/`)
+  }
+
+  const navItems = [
+    { label: t("home"), path: "/", roles: ["admin", "retailer", "wholesaler", "delivery"] },
+    { label: t("dashboard"), path: `/${user?.role}/dashboard`, roles: ["retailer", "wholesaler", "delivery"] },
+    { label: t("dashboard"), path: "/admin/dashboard", roles: ["admin"] },
+    { label: t("browse"), path: "/retailer/browse", roles: ["retailer"] },
+    { label: t("orders"), path: "/retailer/orders", roles: ["retailer"] },
+    { label: t("orders"), path: "/wholesaler/orders", roles: ["wholesaler"] },
+    { label: t("products"), path: "/wholesaler/products", roles: ["wholesaler"] },
+    { label: t("assignments"), path: "/delivery/assignments", roles: ["delivery"] },
+    { label: t("active.deliveries"), path: "/delivery/active", roles: ["delivery"] },
+    { label: t("delivery.history"), path: "/delivery/history", roles: ["delivery"] },
+    { label: t("users"), path: "/admin/users", roles: ["admin"] },
+    { label: t("roles"), path: "/admin/roles", roles: ["admin"] },
+    { label: t("analytics"), path: "/admin/analytics", roles: ["admin"] },
+    { label: t("system.status"), path: "/admin/system-status", roles: ["admin"] },
+  ]
+
+  const filteredNavItems = user
+    ? navItems.filter((item) => item.roles.includes(user.role))
+    : navItems.filter((item) => item.path === "/")
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      setOpen(false)
+      router.push("/")
+    } catch (error) {
+      console.error("Error signing out:", error)
     }
-
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
-
-  const isHomePage = pathname === "/"
-  const isAuthPage = pathname === "/login" || pathname === "/signup"
-  const isRetailerPage = pathname?.startsWith("/retailer")
-  const isWholesalerPage = pathname?.startsWith("/wholesaler")
-  const isDeliveryPage = pathname?.startsWith("/delivery")
-  const isAdminPage = pathname?.startsWith("/admin")
-  const isChatPage = pathname === "/chat"
-
-  const getNavLinks = () => {
-    if (isRetailerPage) {
-      return [
-        { href: "/retailer/dashboard", label: t("Dashboard"), icon: <Home className="h-5 w-5 mr-2" /> },
-        { href: "/retailer/browse", label: t("Browse Products"), icon: <Package className="h-5 w-5 mr-2" /> },
-        { href: "/retailer/orders", label: t("My Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/retailer/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
-        { href: "/retailer/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-      ]
-    } else if (isWholesalerPage) {
-      return [
-        { href: "/wholesaler/dashboard", label: t("Dashboard"), icon: <Home className="h-5 w-5 mr-2" /> },
-        { href: "/wholesaler/products", label: t("My Products"), icon: <Package className="h-5 w-5 mr-2" /> },
-        { href: "/wholesaler/orders", label: t("Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/wholesaler/payments", label: t("Payments"), icon: <CreditCard className="h-5 w-5 mr-2" /> },
-        { href: "/wholesaler/tax", label: t("Tax Reports"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-      ]
-    } else if (isDeliveryPage) {
-      return [
-        { href: "/delivery/dashboard", label: t("Dashboard"), icon: <Home className="h-5 w-5 mr-2" /> },
-        { href: "/delivery/assignments", label: t("Find Assignments"), icon: <Package className="h-5 w-5 mr-2" /> },
-        { href: "/delivery/active", label: t("Active Deliveries"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/delivery/history", label: t("History"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/chat", label: t("Chat"), icon: <MessageSquare className="h-5 w-5 mr-2" /> },
-      ]
-    } else if (isAdminPage) {
-      return [
-        { href: "/admin/dashboard", label: t("Dashboard"), icon: <Home className="h-5 w-5 mr-2" /> },
-        { href: "/admin/users", label: t("Users"), icon: <User className="h-5 w-5 mr-2" /> },
-        { href: "/admin/orders", label: t("Orders"), icon: <FileText className="h-5 w-5 mr-2" /> },
-        { href: "/admin/settings", label: t("Settings"), icon: <Settings className="h-5 w-5 mr-2" /> },
-      ]
-    } else if (isChatPage) {
-      return [
-        {
-          href:
-            user?.role === "retailer"
-              ? "/retailer/dashboard"
-              : user?.role === "wholesaler"
-                ? "/wholesaler/dashboard"
-                : user?.role === "delivery"
-                  ? "/delivery/dashboard"
-                  : "/admin/dashboard",
-          label: t("Dashboard"),
-          icon: <Home className="h-5 w-5 mr-2" />,
-        },
-      ]
-    } else {
-      return [{ href: "/", label: t("Home"), icon: <Home className="h-5 w-5 mr-2" /> }]
-    }
-  }
-
-  const navLinks = getNavLinks()
-
-  const handleLogout = async () => {
-    await logout()
-  }
-
-  const getProfileLink = () => {
-    if (user?.role === "retailer") return "/retailer/profile"
-    if (user?.role === "wholesaler") return "/wholesaler/profile"
-    if (user?.role === "delivery") return "/delivery/profile"
-    if (user?.role === "admin") return "/admin/profile"
-    return "/"
-  }
-
-  const getDashboardLink = () => {
-    if (user?.role === "retailer") return "/retailer/dashboard"
-    if (user?.role === "wholesaler") return "/wholesaler/dashboard"
-    if (user?.role === "delivery") return "/delivery/dashboard"
-    if (user?.role === "admin") return "/admin/dashboard"
-    return "/"
   }
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
-        isScrolled || !isHomePage ? "bg-background border-b" : "bg-transparent"
-      }`}
-    >
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center">
-            <Link href="/" className="flex items-center">
-              <span className="text-xl font-bold text-primary">RetailBandhu</span>
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+      <div className="container mx-auto px-4 flex h-16 items-center justify-between">
+        <div className="flex items-center">
+          <Link href="/" className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+            RetailBandhu
+          </Link>
+        </div>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center space-x-4">
+          {filteredNavItems.map((item) => (
+            <Link
+              key={item.path}
+              href={item.path}
+              className={`px-3 py-2 text-sm font-medium rounded-md ${
+                isActive(item.path)
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                  : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+              }`}
+            >
+              {item.label}
             </Link>
-          </div>
+          ))}
+        </nav>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-4">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`px-3 py-2 text-sm font-medium rounded-md ${
-                  pathname === link.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+        <div className="flex items-center space-x-4">
+          <LanguageToggle />
+          <ThemeToggle />
 
-          <div className="flex items-center space-x-2">
-            {user && <NotificationBell />}
+          {user && <NotificationBell />}
 
-            <LanguageToggle />
-
-            <ThemeToggle />
-
-            {user && user.role === "retailer" && (
-              <Link href="/retailer/checkout">
-                <Button variant="ghost" className="relative p-2 h-10 w-10">
-                  <ShoppingCart className="h-5 w-5" />
-                  {items.length > 0 && (
-                    <Badge
-                      className="absolute -top-1 -right-1 px-1.5 py-0.5 min-w-[1.25rem] h-5 flex items-center justify-center"
-                      variant="destructive"
-                    >
-                      {items.length}
-                    </Badge>
-                  )}
+          {user ? (
+            <div className="hidden md:flex items-center space-x-4">
+              <Link href="/profile">
+                <Button variant="ghost" className="text-sm">
+                  {user.name || t("profile")}
                 </Button>
               </Link>
-            )}
-
-            {isLoading ? (
-              <div className="h-8 w-8 rounded-full bg-muted animate-pulse"></div>
-            ) : user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src="/placeholder.svg" alt={user.name || "User"} />
-                      <AvatarFallback>{user.name?.charAt(0) || "U"}</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>
-                    <div className="flex flex-col">
-                      <span>{user.name || "User"}</span>
-                      <span className="text-xs text-muted-foreground">{user.role}</span>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href={getDashboardLink()}>
-                      <Home className="mr-2 h-4 w-4" />
-                      <span>Dashboard</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href={getProfileLink()}>
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Profile</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/notifications">
-                      <Bell className="mr-2 h-4 w-4" />
-                      <span>Notifications</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Logout</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : !isAuthPage ? (
-              <div className="flex items-center space-x-2">
-                <Button asChild variant="ghost">
-                  <Link href="/login">{t("Login")}</Link>
-                </Button>
-                <Button asChild>
-                  <Link href="/signup">{t("Sign Up")}</Link>
-                </Button>
-              </div>
-            ) : null}
-
-            {/* Mobile Menu */}
-            <div className="md:hidden">
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-10 w-10">
-                    <Menu className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right">
-                  <div className="flex flex-col h-full">
-                    <div className="flex items-center justify-between py-4">
-                      <span className="text-lg font-bold text-primary">RetailBandhu</span>
-                      <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </SheetTrigger>
-                    </div>
-                    <nav className="flex flex-col space-y-1 mt-4">
-                      {navLinks.map((link) => (
-                        <Link
-                          key={link.href}
-                          href={link.href}
-                          className={`px-3 py-2 text-sm font-medium rounded-md flex items-center ${
-                            pathname === link.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
-                          }`}
-                        >
-                          {link.icon}
-                          {link.label}
-                        </Link>
-                      ))}
-                    </nav>
-                    <div className="mt-auto">
-                      {user ? (
-                        <div className="border-t pt-4 mt-4">
-                          <div className="flex items-center px-3 py-2">
-                            <Avatar className="h-8 w-8 mr-2">
-                              <AvatarImage src="/placeholder.svg" alt={user.name || "User"} />
-                              <AvatarFallback>{user.name?.charAt(0) || "U"}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">{user.name || "User"}</p>
-                              <p className="text-xs text-muted-foreground">{user.role}</p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start px-3 py-2 mt-2"
-                            onClick={handleLogout}
-                          >
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Logout
-                          </Button>
-                        </div>
-                      ) : !isAuthPage ? (
-                        <div className="border-t pt-4 mt-4 space-y-2">
-                          <Button asChild variant="outline" className="w-full">
-                            <Link href="/login">{t("Login")}</Link>
-                          </Button>
-                          <Button asChild className="w-full">
-                            <Link href="/signup">{t("Sign Up")}</Link>
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
+              <Button onClick={handleSignOut} variant="outline" className="text-sm">
+                {t("sign.out")}
+              </Button>
             </div>
-          </div>
+          ) : (
+            <div className="hidden md:flex items-center space-x-4">
+              <Link href="/login">
+                <Button variant="ghost" className="text-sm">
+                  {t("login")}
+                </Button>
+              </Link>
+              <Link href="/signup">
+                <Button variant="outline" className="text-sm">
+                  {t("sign.up")}
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {/* Mobile menu button */}
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right">
+              <nav className="flex flex-col space-y-4 mt-8">
+                {filteredNavItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    onClick={() => setOpen(false)}
+                    className={`px-3 py-2 text-lg font-medium rounded-md ${
+                      isActive(item.path)
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                        : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+
+                {user ? (
+                  <>
+                    <Link
+                      href="/profile"
+                      onClick={() => setOpen(false)}
+                      className="px-3 py-2 text-lg font-medium rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {t("profile")}
+                    </Link>
+                    <Link
+                      href="/notifications"
+                      onClick={() => setOpen(false)}
+                      className="px-3 py-2 text-lg font-medium rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {t("notifications")}
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="px-3 py-2 text-lg font-medium rounded-md text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                      {t("sign.out")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      onClick={() => setOpen(false)}
+                      className="px-3 py-2 text-lg font-medium rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {t("login")}
+                    </Link>
+                    <Link
+                      href="/signup"
+                      onClick={() => setOpen(false)}
+                      className="px-3 py-2 text-lg font-medium rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {t("sign.up")}
+                    </Link>
+                  </>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
     </header>
-  )
-}
-
-export default function Navbar() {
-  return (
-    <TranslationProvider>
-      <NavbarContent />
-    </TranslationProvider>
   )
 }

@@ -13,28 +13,47 @@ import { Store, Warehouse, Truck } from "lucide-react"
 import VoiceButton from "../components/voice-button"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { signUp } from "@/lib/auth-service"
-import type { UserRole } from "@/lib/supabase-client"
+import { signUp, sendOtp, verifyOtp } from "@/lib/auth-service"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 function SignupForm() {
   const { t, language } = useTranslation()
   const [step, setStep] = useState(1)
-  const [role, setRole] = useState<UserRole | null>(null)
-  const [phoneNumber, setPhoneNumber] = useState("")
+  const [role, setRole] = useState<"retailer" | "wholesaler" | "delivery" | null>(null)
+  const [identifier, setIdentifier] = useState("")
   const [otp, setOtp] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone")
   const router = useRouter()
 
   const handleVoiceInput = (text: string) => {
-    // Clean up voice input to get only digits
-    const digits = text.replace(/\D/g, "")
-    if (step === 1) {
-      setPhoneNumber(digits)
-    } else if (step === 2) {
-      setOtp(digits)
+    // Clean up voice input based on auth method
+    if (authMethod === "phone") {
+      const digits = text.replace(/\D/g, "")
+      if (step === 1) {
+        setIdentifier(digits)
+      } else if (step === 2) {
+        setOtp(digits)
+      }
+    } else {
+      // For email, just use the text as is
+      if (step === 1) {
+        setIdentifier(text.toLowerCase())
+      } else if (step === 2) {
+        setOtp(text)
+      }
+    }
+  }
+
+  const validateIdentifier = () => {
+    if (authMethod === "phone") {
+      return identifier.length === 10
+    } else {
+      // Simple email validation
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)
     }
   }
 
@@ -43,12 +62,20 @@ function SignupForm() {
     setError("")
 
     try {
-      // For signup, we don't need to check if user exists
-      setStep(2)
-      toast({
-        title: "OTP Sent",
-        description: "A verification code has been sent to your WhatsApp.",
-      })
+      // Make sure phone number doesn't already have country code
+      const cleanIdentifier = authMethod === "phone" ? identifier.replace(/^\+91/, "") : identifier
+
+      const result = await sendOtp(cleanIdentifier)
+
+      if (result.success) {
+        setStep(2)
+        toast({
+          title: "OTP Sent",
+          description: `A verification code has been sent to your ${authMethod}.`,
+        })
+      } else {
+        setError(result.error || `Failed to send OTP to your ${authMethod}. Please try again.`)
+      }
     } catch (error) {
       setError("An unexpected error occurred. Please try again.")
       console.error("Error sending OTP:", error)
@@ -62,11 +89,15 @@ function SignupForm() {
     setError("")
 
     try {
-      // For signup, we just verify the OTP format
-      if (otp.length === 6) {
+      // Make sure phone number doesn't already have country code
+      const cleanIdentifier = authMethod === "phone" ? identifier.replace(/^\+91/, "") : identifier
+
+      const result = await verifyOtp(cleanIdentifier, otp)
+
+      if (result.success) {
         setStep(3)
       } else {
-        setError("Invalid OTP. Please enter a 6-digit code.")
+        setError(result.error || "Failed to verify OTP. Please try again.")
       }
     } catch (error) {
       setError("An unexpected error occurred. Please try again.")
@@ -79,9 +110,11 @@ function SignupForm() {
   const continueToOnboarding = async () => {
     if (role) {
       try {
+        setIsLoading(true)
         // Register the user with basic info
         const result = await signUp({
-          phone: phoneNumber,
+          phone: authMethod === "phone" ? identifier : undefined,
+          email: authMethod === "email" ? identifier : undefined,
           role: role,
         })
 
@@ -94,6 +127,8 @@ function SignupForm() {
       } catch (error) {
         setError("An unexpected error occurred. Please try again.")
         console.error("Error creating account:", error)
+      } finally {
+        setIsLoading(false)
       }
     }
   }
@@ -104,8 +139,8 @@ function SignupForm() {
         <CardHeader className="space-y-2">
           <CardTitle className="text-3xl font-bold text-center">{t("signup.title")}</CardTitle>
           <CardDescription className="text-xl text-center">
-            {step === 1 && "Enter your phone number to get started"}
-            {step === 2 && "Enter the OTP sent to your WhatsApp"}
+            {step === 1 && "Enter your phone number or email to get started"}
+            {step === 2 && `Enter the OTP sent to your ${authMethod}`}
             {step === 3 && "Select your role in the supply chain"}
           </CardDescription>
         </CardHeader>
@@ -114,26 +149,61 @@ function SignupForm() {
 
           {step === 1 && (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-xl">
-                  {t("phone")}
-                </Label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="9876543210"
-                    className="text-xl h-16"
-                  />
-                  <VoiceButton onText={handleVoiceInput} language={language} />
-                </div>
-              </div>
+              <Tabs
+                defaultValue="phone"
+                onValueChange={(value) => {
+                  setAuthMethod(value as "phone" | "email")
+                  setIdentifier("") // Clear identifier when switching tabs
+                  setError("")
+                }}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="phone">Phone</TabsTrigger>
+                  <TabsTrigger value="email">Email</TabsTrigger>
+                </TabsList>
+                <TabsContent value="phone" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-xl">
+                      {t("phone")}
+                    </Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        placeholder="9876543210"
+                        className="text-xl h-16"
+                      />
+                      <VoiceButton onText={handleVoiceInput} language={language} />
+                    </div>
+                    <p className="text-sm text-gray-500">Enter 10 digits without country code</p>
+                  </div>
+                </TabsContent>
+                <TabsContent value="email" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="text-xl">
+                      Email
+                    </Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        id="email"
+                        type="email"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="you@example.com"
+                        className="text-xl h-16"
+                      />
+                      <VoiceButton onText={handleVoiceInput} language={language} />
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
               <Button
                 onClick={handleSendOtp}
                 className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={phoneNumber.length !== 10 || isLoading}
+                disabled={!validateIdentifier() || isLoading}
               >
                 {isLoading ? "Sending..." : t("send.otp")}
               </Button>
@@ -151,10 +221,9 @@ function SignupForm() {
                     id="otp"
                     type="text"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     placeholder="123456"
                     className="text-xl h-16"
-                    maxLength={6}
                   />
                   <VoiceButton onText={handleVoiceInput} language={language} />
                 </div>
@@ -169,6 +238,9 @@ function SignupForm() {
 
               <div className="text-center mt-4">
                 <p className="text-lg">Enter any 6 digits as OTP for demo</p>
+                <Button variant="link" onClick={() => setStep(1)} className="mt-2">
+                  Change {authMethod}
+                </Button>
               </div>
             </>
           )}

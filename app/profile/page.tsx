@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
-import { useTranslation } from "@/app/components/translation-provider"
+import { useSafeTranslation } from "@/lib/use-safe-translation"
 import Navbar from "@/app/components/navbar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,8 +18,12 @@ import { getNotificationPreferences, updateNotificationPreferences } from "@/lib
 import { User, Store, MapPin, Phone, Mail, CreditCard, Bell, Shield, LogOut, Upload, Loader2 } from "lucide-react"
 import Image from "next/image"
 
+// Add a static export configuration to skip static generation
+export const dynamic = "force-dynamic"
+
 export default function ProfilePage() {
-  const { t } = useTranslation()
+  // Use our safe translation hook instead
+  const { t, isMounted } = useSafeTranslation()
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState("personal")
   const [isLoading, setIsLoading] = useState(true)
@@ -50,6 +54,9 @@ export default function ProfilePage() {
   })
 
   useEffect(() => {
+    // Skip loading data during server-side rendering
+    if (!isMounted) return
+
     const loadUserData = async () => {
       if (!user) return
 
@@ -77,7 +84,7 @@ export default function ProfilePage() {
     }
 
     loadUserData()
-  }, [user])
+  }, [user, isMounted])
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target
@@ -148,6 +155,22 @@ export default function ProfilePage() {
         variant: "destructive",
       })
     }
+  }
+
+  // Show a loading state during server-side rendering
+  if (!isMounted) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow pt-20 pb-20 px-4">
+          <div className="container mx-auto max-w-6xl">
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            </div>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   if (!user) {

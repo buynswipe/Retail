@@ -237,13 +237,26 @@ export default function NewProductPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="weight">{t("Weight (in grams)")}</Label>
-                  <Input id="weight" name="weight" value={product.weight} onChange={handleInputChange} />
+                  <Label htmlFor="weight">{t("Weight (in kg)")}</Label>
+                  <Input
+                    id="weight"
+                    name="weight"
+                    type="number"
+                    step="0.01"
+                    value={product.weight}
+                    onChange={handleInputChange}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="dimensions">{t("Dimensions (L x W x H cm)")}</Label>
-                  <Input id="dimensions" name="dimensions" value={product.dimensions} onChange={handleInputChange} />
+                  <Input
+                    id="dimensions"
+                    name="dimensions"
+                    value={product.dimensions}
+                    onChange={handleInputChange}
+                    placeholder="30 x 20 x 10"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -253,8 +266,8 @@ export default function NewProductPage() {
             <CardHeader>
               <CardTitle>{t("Pricing Information")}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="cost_price">{t("Cost Price (₹)")}</Label>
                   <Input
@@ -290,9 +303,7 @@ export default function NewProductPage() {
                     onChange={handleInputChange}
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tax_rate">{t("Tax Rate (%)")}</Label>
                   <Select value={product.tax_rate} onValueChange={(value) => handleSelectChange("tax_rate", value)}>
@@ -326,21 +337,18 @@ export default function NewProductPage() {
                   </Select>
                 </div>
 
-                {product.discount_type !== "none" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="discount_value">
-                      {product.discount_type === "percentage" ? t("Discount Percentage (%)") : t("Discount Amount (₹)")}
-                    </Label>
-                    <Input
-                      id="discount_value"
-                      name="discount_value"
-                      type="number"
-                      step="0.01"
-                      value={product.discount_value}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="discount_value">{t("Discount Value")}</Label>
+                  <Input
+                    id="discount_value"
+                    name="discount_value"
+                    type="number"
+                    step="0.01"
+                    value={product.discount_value}
+                    onChange={handleInputChange}
+                    disabled={product.discount_type === "none"}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -102,7 +102,7 @@ export async function uploadProfileImage(file: File): Promise<{ url: string | nu
   }
 }
 
-// Get user profile by ID
+// Add the missing getUserProfile function
 export async function getUserProfile(userId: string): Promise<{ data: User | null; error: any }> {
   try {
     const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()

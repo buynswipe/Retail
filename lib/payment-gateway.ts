@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "./supabase-client"
-import type { Order, PaymentMethod, PaymentStatus } from "./types"
+import type { PaymentMethod, PaymentStatus } from "./types"
 import crypto from "crypto"
 
 // Initialize PayU client
@@ -10,8 +10,8 @@ const payu = {
   merchantSalt: process.env.PAYU_MERCHANT_SALT || "",
   merchantSaltVersion: process.env.PAYU_SALT_VERSION || "2",
   baseUrl: process.env.PAYU_BASE_URL || "https://secure.payu.in",
-  successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/callback/payu/success`,
-  failureUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/callback/payu/failure`,
+  successUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/payment/callback/payu/success`,
+  failureUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/payment/callback/payu/failure`,
 }
 
 export async function createPaymentOrder(
@@ -33,7 +33,7 @@ export async function createPaymentOrder(
     // Get retailer details
     const { data: retailer, error: retailerError } = await supabase
       .from("users")
-      .select("email, phone, name")
+      .select("email, phone_number, name")
       .eq("id", order.retailer_id)
       .single()
 
@@ -69,7 +69,7 @@ export async function createPaymentOrder(
     }
   } catch (error) {
     console.error("Payment creation error:", error)
-    return { success: false, error: "Failed to create payment order" }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to create payment order" }
   }
 }
 
@@ -77,7 +77,7 @@ async function createPayuOrder(
   paymentId: string,
   amount: number,
   currency: string,
-  order: Order,
+  order: any,
   retailer: any,
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
@@ -92,7 +92,7 @@ async function createPayuOrder(
       productinfo: `Order #${order.id.substring(0, 8)}`,
       firstname: retailer.name || "Customer",
       email: retailer.email || "customer@example.com",
-      phone: retailer.phone || "",
+      phone: retailer.phone_number || "",
       surl: payu.successUrl,
       furl: payu.failureUrl,
       udf1: paymentId, // Store payment ID for reference
@@ -131,7 +131,7 @@ async function createPayuOrder(
     }
   } catch (error) {
     console.error("PayU order creation error:", error)
-    return { success: false, error: "Failed to create PayU order" }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to create PayU order" }
   }
 }
 
@@ -203,7 +203,7 @@ export async function verifyPayment(
     return { success: true }
   } catch (error) {
     console.error("Payment verification error:", error)
-    return { success: false, error: "Failed to verify payment" }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to verify payment" }
   }
 }
 

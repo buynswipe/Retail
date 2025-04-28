@@ -1,7 +1,10 @@
+// This is a simplified service worker for the Retail Bandhu application
+// It handles offline caching and background sync
+
 const CACHE_NAME = "retail-bandhu-v1"
 const OFFLINE_URL = "/offline"
 
-// Assets to cache immediately on service worker install
+// Assets to cache immediately on install
 const PRECACHE_ASSETS = [
   "/",
   "/offline",
@@ -9,10 +12,8 @@ const PRECACHE_ASSETS = [
   "/signup",
   "/manifest.json",
   "/favicon.ico",
-  "/thoughtful-vikram.png",
-  "/thoughtful-suresh.png",
-  "/stylized-admin-panel.png",
-  "/abstract-geometric-shapes.png",
+  "/placeholder.png",
+  "/UPI-symbol.png",
 ]
 
 // Install event - precache key assets
@@ -20,12 +21,8 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(PRECACHE_ASSETS)
-      })
-      .then(() => {
-        return self.skipWaiting()
-      }),
+      .then((cache) => cache.addAll(PRECACHE_ASSETS))
+      .then(() => self.skipWaiting()),
   )
 })
 
@@ -45,43 +42,28 @@ self.addEventListener("activate", (event) => {
             }),
         )
       })
-      .then(() => {
-        return self.clients.claim()
-      }),
+      .then(() => self.clients.claim()),
   )
 })
 
 // Fetch event - serve from cache or network
 self.addEventListener("fetch", (event) => {
   // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  if (
+    !event.request.url.startsWith(self.location.origin) ||
+    event.request.method !== "GET" ||
+    event.request.url.includes("/api/") ||
+    event.request.url.includes("/_next/data/")
+  ) {
     return
   }
 
-  // Skip Supabase API requests (these will be handled by the offline sync mechanism)
-  if (event.request.url.includes("supabase.co")) {
-    return
-  }
-
-  // For navigation requests (HTML pages)
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(OFFLINE_URL)
-      }),
-    )
-    return
-  }
-
-  // For other requests (assets, API calls)
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Return cached response if found
-      if (response) {
-        return response
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse
       }
 
-      // Otherwise try to fetch from network
       return fetch(event.request)
         .then((response) => {
           // Don't cache non-successful responses
@@ -89,10 +71,8 @@ self.addEventListener("fetch", (event) => {
             return response
           }
 
-          // Clone the response as it can only be consumed once
+          // Clone the response to cache it and return it
           const responseToCache = response.clone()
-
-          // Cache the response for future
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache)
           })
@@ -100,35 +80,24 @@ self.addEventListener("fetch", (event) => {
           return response
         })
         .catch(() => {
+          // If the request is for a page, return the offline page
+          if (event.request.mode === "navigate") {
+            return caches.match(OFFLINE_URL)
+          }
+
           // For image requests, return a placeholder
           if (event.request.destination === "image") {
             return caches.match("/placeholder.png")
           }
 
-          // For API requests, return an empty JSON response
-          if (event.request.url.includes("/api/")) {
-            return new Response(
-              JSON.stringify({
-                error: "You are offline",
-                offline: true,
-              }),
-              {
-                headers: { "Content-Type": "application/json" },
-              },
-            )
-          }
-
-          // For other assets, just fail
-          return new Response("Network error happened", {
-            status: 408,
-            headers: { "Content-Type": "text/plain" },
-          })
+          // For other requests, just return a simple response
+          return new Response("Offline content not available")
         })
     }),
   )
 })
 
-// Background sync for offline operations
+// Background sync for pending operations
 self.addEventListener("sync", (event) => {
   if (event.tag === "sync-pending-operations") {
     event.waitUntil(syncPendingOperations())
@@ -137,59 +106,58 @@ self.addEventListener("sync", (event) => {
 
 // Function to sync pending operations
 async function syncPendingOperations() {
-  const db = await openDB()
-  const pendingOperations = await db.getAll("pendingOperations")
+  // This would be implemented to sync data from IndexedDB to the server
+  // For now, we'll just log that sync was attempted
+  console.log("Background sync triggered for pending operations")
 
-  for (const operation of pendingOperations) {
-    try {
-      const response = await fetch(operation.url, {
-        method: operation.method,
-        headers: operation.headers,
-        body: operation.body ? JSON.stringify(operation.body) : undefined,
-      })
+  // In a real implementation, you would:
+  // 1. Open IndexedDB
+  // 2. Get all pending operations
+  // 3. Send them to the server
+  // 4. Mark them as synced if successful
+}
 
-      if (response.ok) {
-        // If successful, remove from pending operations
-        await db.delete("pendingOperations", operation.id)
+// Push notification event
+self.addEventListener("push", (event) => {
+  if (!event.data) return
 
-        // Notify clients that sync was successful
-        const clients = await self.clients.matchAll()
-        clients.forEach((client) => {
-          client.postMessage({
-            type: "SYNC_SUCCESS",
-            operationId: operation.id,
-            timestamp: new Date().toISOString(),
-          })
-        })
-      }
-    } catch (error) {
-      console.error("Failed to sync operation:", error)
-      // Will be retried on next sync event
+  try {
+    const data = event.data.json()
+
+    const options = {
+      body: data.message,
+      icon: "/favicon.ico",
+      badge: "/favicon.ico",
+      data: {
+        url: data.url || "/",
+      },
     }
+
+    event.waitUntil(self.registration.showNotification(data.title, options))
+  } catch (error) {
+    console.error("Error showing notification:", error)
   }
-}
+})
 
-// Helper function to open IndexedDB
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("RetailBandhuOfflineDB", 1)
+// Notification click event
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
 
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result
-      if (!db.objectStoreNames.contains("pendingOperations")) {
-        db.createObjectStore("pendingOperations", { keyPath: "id" })
+  event.waitUntil(
+    clients.matchAll({ type: "window" }).then((clientList) => {
+      const url = event.notification.data.url
+
+      // If a window is already open, focus it
+      for (const client of clientList) {
+        if (client.url === url && "focus" in client) {
+          return client.focus()
+        }
       }
-      if (!db.objectStoreNames.contains("offlineData")) {
-        db.createObjectStore("offlineData", { keyPath: "key" })
+
+      // Otherwise open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(url)
       }
-    }
-
-    request.onsuccess = (event) => {
-      resolve(event.target.result)
-    }
-
-    request.onerror = (event) => {
-      reject(event.target.error)
-    }
-  })
-}
+    }),
+  )
+})

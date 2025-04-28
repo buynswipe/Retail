@@ -1,4 +1,4 @@
-import { createClient } from "./supabase-client"
+import { supabase } from "./supabase-client"
 
 export interface PaymentAnalytics {
   totalRevenue: number
@@ -34,7 +34,6 @@ export async function getPaymentAnalytics(
   filters: PaymentAnalyticsFilters = {},
 ): Promise<{ data: PaymentAnalytics | null; error: any }> {
   try {
-    const supabase = createClient()
     let query = supabase.from("payments").select("*")
 
     // Apply filters
@@ -177,7 +176,6 @@ export async function getRetailerPaymentAnalytics(
   filters: PaymentAnalyticsFilters = {},
 ): Promise<{ data: PaymentAnalytics | null; error: any }> {
   try {
-    const supabase = createClient()
     let query = supabase.from("payments").select("*").eq("customer_id", retailerId)
 
     // Apply filters
@@ -211,7 +209,6 @@ export async function getWholesalerPaymentAnalytics(
   filters: PaymentAnalyticsFilters = {},
 ): Promise<{ data: PaymentAnalytics | null; error: any }> {
   try {
-    const supabase = createClient()
     // For wholesalers, we need to join with orders to get payments for their orders
     const { data: orders, error: ordersError } = await supabase
       .from("orders")

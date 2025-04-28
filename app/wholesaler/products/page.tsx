@@ -32,8 +32,6 @@ import { getProducts, createProduct, updateProduct, deleteProduct } from "@/lib/
 import { getCategories } from "@/lib/category-service"
 import { useTranslation } from "@/app/components/translation-provider"
 
-export const dynamic = "force-dynamic"
-
 export default function ProductsPage() {
   const { t } = useTranslation()
   const router = useRouter()

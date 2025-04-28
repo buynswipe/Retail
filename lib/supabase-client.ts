@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 // Add this function to check for localStorage values in the browser environment
 function getBrowserEnvVar(key: string): string | undefined {
@@ -23,10 +23,41 @@ const isMissingEnvVars =
   !(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || getBrowserEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"))
 
 // Create the Supabase client
-export const supabase = isMissingEnvVars ? createMockSupabaseClient() : createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = isMissingEnvVars
+  ? createMockSupabaseClient()
+  : createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
 
 // Re-export createClient for use in other modules
-export { createClient }
+export function createClient() {
+  // Check again in case localStorage values were set after initial load
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    getBrowserEnvVar("NEXT_PUBLIC_SUPABASE_URL") ||
+    "https://your-project.supabase.co"
+
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || getBrowserEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || "your-anon-key"
+
+  const missing =
+    !(process.env.NEXT_PUBLIC_SUPABASE_URL || getBrowserEnvVar("NEXT_PUBLIC_SUPABASE_URL")) ||
+    !(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || getBrowserEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"))
+
+  return missing
+    ? createMockSupabaseClient()
+    : createSupabaseClient(url, key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      })
+}
 
 // Mock Supabase client for development/preview when environment variables are not available
 function createMockSupabaseClient() {
@@ -41,21 +72,39 @@ function createMockSupabaseClient() {
         eq: () => Promise.resolve({ data: [], error: null }),
         order: () => ({
           limit: () => Promise.resolve({ data: [], error: null }),
+          range: () => Promise.resolve({ data: [], error: null }),
         }),
+        range: () => Promise.resolve({ data: [], error: null }),
+        limit: () => Promise.resolve({ data: [], error: null }),
+        single: () => Promise.resolve({ data: null, error: null }),
+      }),
+      update: () => ({
+        eq: () => Promise.resolve({ data: null, error: null }),
+      }),
+      delete: () => ({
+        eq: () => Promise.resolve({ data: null, error: null }),
       }),
     }),
     auth: {
       signIn: () => Promise.resolve({ user: null, session: null, error: null }),
       signOut: () => Promise.resolve({ error: null }),
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
     storage: {
       from: () => ({
         upload: () => Promise.resolve({ data: null, error: null }),
+        getPublicUrl: () => ({ data: { publicUrl: "" } }),
       }),
     },
     functions: {
       invoke: () => Promise.resolve({ data: null, error: null }),
     },
+    channel: () => ({
+      on: () => ({ subscribe: () => ({}) }),
+    }),
+    removeChannel: () => {},
+    rpc: () => Promise.resolve({ data: null, error: null }),
   }
 }
 

@@ -1,49 +1,104 @@
-"use client"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import type { Order, OrderStatus } from "@/lib/types"
 
-import { formatCurrency } from "@/lib/utils"
-import { useTranslation } from "@/lib/use-safe-translation"
+interface OrderSummaryProps {
+  order: Order
+}
 
-export function OrderSummary({ order }: { order: any }) {
-  const { t } = useTranslation()
+export default function OrderSummary({ order }: OrderSummaryProps) {
+  const getStatusBadge = (status: OrderStatus) => {
+    const statusConfig = {
+      PENDING: { color: "bg-yellow-100 text-yellow-800", label: "Pending" },
+      PROCESSING: { color: "bg-blue-100 text-blue-800", label: "Processing" },
+      SHIPPED: { color: "bg-purple-100 text-purple-800", label: "Shipped" },
+      DELIVERED: { color: "bg-green-100 text-green-800", label: "Delivered" },
+      CANCELLED: { color: "bg-red-100 text-red-800", label: "Cancelled" },
+    }
 
-  if (!order) return null
+    const config = statusConfig[status]
+    return <Badge className={config.color}>{config.label}</Badge>
+  }
 
-  const subtotal = order.items?.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0) || 0
-  const tax = order.tax_amount || 0
-  const shipping = order.shipping_fee || 0
-  const discount = order.discount_amount || 0
-  const total = order.total_amount || subtotal + tax + shipping - discount
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between">
-        <span className="text-gray-500">{t("Subtotal")}</span>
-        <span>{formatCurrency(subtotal)}</span>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <Card>
+        <CardHeader>
+          <CardTitle>Order Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div>
+              <span className="text-sm text-gray-500">Order ID</span>
+              <p className="font-medium">{order.id}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">Order Date</span>
+              <p className="font-medium">{formatDate(order.createdAt)}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">Status</span>
+              <div className="mt-1">{getStatusBadge(order.status)}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="flex justify-between">
-        <span className="text-gray-500">{t("Tax")}</span>
-        <span>{formatCurrency(tax)}</span>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div>
+              <span className="text-sm text-gray-500">Payment Method</span>
+              <p className="font-medium">{order.paymentMethod || "Not specified"}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">Payment Status</span>
+              <p className="font-medium">{order.paymentStatus}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">Total Amount</span>
+              <p className="font-medium">₹{order.totalAmount.toFixed(2)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="flex justify-between">
-        <span className="text-gray-500">{t("Shipping")}</span>
-        <span>{formatCurrency(shipping)}</span>
-      </div>
-
-      {discount > 0 && (
-        <div className="flex justify-between">
-          <span className="text-gray-500">{t("Discount")}</span>
-          <span className="text-green-600">-{formatCurrency(discount)}</span>
-        </div>
-      )}
-
-      <div className="pt-4 border-t flex justify-between font-medium text-lg">
-        <span>{t("Total")}</span>
-        <span>{formatCurrency(total)}</span>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Shipping Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div>
+              <span className="text-sm text-gray-500">Delivery Address</span>
+              <p className="font-medium">{order.shippingAddress}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">City</span>
+              <p className="font-medium">{order.shippingCity}</p>
+            </div>
+            <div>
+              <span className="text-sm text-gray-500">Pincode</span>
+              <p className="font-medium">{order.shippingPincode}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-export default OrderSummary
+// Add the named export
+export { OrderSummary }

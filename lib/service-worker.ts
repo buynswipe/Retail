@@ -1,8 +1,9 @@
 export function registerServiceWorker() {
-  if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  if (typeof window !== "undefined" && "serviceWorker" in navigator && process.env.NODE_ENV === "production") {
     window.addEventListener("load", () => {
+      const swUrl = `${window.location.origin}/sw.js`
       navigator.serviceWorker
-        .register("/sw.js")
+        .register(swUrl)
         .then((registration) => {
           console.log("Service Worker registered: ", registration)
         })

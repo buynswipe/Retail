@@ -1,4 +1,4 @@
-import { createClient } from "./supabase-client"
+import { supabase } from "./supabase-client"
 import { formatCurrency, formatDate } from "./utils"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
@@ -29,8 +29,6 @@ export interface ReceiptData {
 
 export async function generateReceiptPDF(paymentId: string): Promise<{ data: Blob | null; error: any }> {
   try {
-    const supabase = createClient()
-
     // Get payment details
     const { data: payment, error: paymentError } = await supabase
       .from("payments")
@@ -187,7 +185,7 @@ function generatePDF(data: ReceiptData): jsPDF {
 
   if (data.wholesalerGstin) {
     pdf.text("GSTIN:", 14, y)
-    pdf.text(data.wholesalerGstin, 150, y)
+    pdf.text(data.wholesalerGstin, 50, y)
     y += 7
   }
 

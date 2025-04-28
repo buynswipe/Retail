@@ -406,7 +406,7 @@ export async function getExpiringBatches(
   }
 }
 
-// Get inventory by wholesaler
+// Add the missing functions
 export async function getInventoryByWholesaler(wholesalerId: string): Promise<{ data: any[] | null; error: any }> {
   try {
     // Get all products for the wholesaler
@@ -423,28 +423,28 @@ export async function getInventoryByWholesaler(wholesalerId: string): Promise<{ 
       return { data: [], error: null }
     }
 
-    // Get inventory for each product
-    const inventoryPromises = products.map((product) => getInventoryForProduct(product.id))
-    const inventoryResults = await Promise.all(inventoryPromises)
+    // Get inventory data for each product
+    const inventoryData = await Promise.all(
+      products.map(async (product) => {
+        const { data } = await getInventoryForProduct(product.id)
+        return data
+      }),
+    )
 
-    // Filter out any errors
-    const inventory = inventoryResults.filter((result) => !result.error && result.data).map((result) => result.data)
-
-    return { data: inventory, error: null }
+    return { data: inventoryData.filter(Boolean), error: null }
   } catch (error) {
     console.error("Error getting inventory by wholesaler:", error)
     return { data: null, error }
   }
 }
 
-// Update low stock threshold
 export async function updateLowStockThreshold(
   productId: string,
   threshold: number,
 ): Promise<{ success: boolean; error: any }> {
   try {
     // Check if settings exist
-    const { data, error: checkError } = await supabase
+    const { data: settings, error: checkError } = await supabase
       .from("product_settings")
       .select("id")
       .eq("product_id", productId)
@@ -454,7 +454,7 @@ export async function updateLowStockThreshold(
       throw checkError
     }
 
-    if (data) {
+    if (settings) {
       // Update existing settings
       const { error } = await supabase
         .from("product_settings")
@@ -465,7 +465,7 @@ export async function updateLowStockThreshold(
         throw error
       }
     } else {
-      // Insert new settings
+      // Create new settings
       const { error } = await supabase.from("product_settings").insert({
         product_id: productId,
         low_stock_threshold: threshold,
@@ -483,37 +483,19 @@ export async function updateLowStockThreshold(
   }
 }
 
-// Create inventory batch (alias for addProductBatch for compatibility)
-export async function createInventoryBatch(
-  productId: string,
-  batchData: {
-    batch_number: string
-    quantity: number
-    manufacturing_date?: string
-    expiry_date?: string
-    cost_price?: number
-    notes?: string
-  },
-): Promise<{ data: ProductBatch | null; error: any }> {
-  return await addProductBatch(productId, batchData)
-}
+export const createInventoryBatch = addProductBatch
 
-// Create inventory adjustment
 export async function createInventoryAdjustment(
   productId: string,
   quantity: number,
   reason: string,
   notes?: string,
 ): Promise<{ success: boolean; error: any }> {
-  return await updateProductStock(productId, quantity, reason, notes)
+  return updateProductStock(productId, quantity, reason, notes)
 }
 
-// Get inventory by product (alias for getInventoryForProduct for compatibility)
-export async function getInventoryByProduct(productId: string): Promise<{ data: any | null; error: any }> {
-  return await getInventoryForProduct(productId)
-}
+export const getInventoryByProduct = getInventoryForProduct
 
-// Get inventory batches
 export async function getInventoryBatches(productId: string): Promise<{ data: ProductBatch[] | null; error: any }> {
   try {
     const { data, error } = await supabase
@@ -529,7 +511,6 @@ export async function getInventoryBatches(productId: string): Promise<{ data: Pr
   }
 }
 
-// Get inventory transactions
 export async function getInventoryTransactions(
   productId: string,
 ): Promise<{ data: InventoryTransaction[] | null; error: any }> {
@@ -540,22 +521,7 @@ export async function getInventoryTransactions(
       .eq("product_id", productId)
       .order("created_at", { ascending: false })
 
-    if (error) {
-      throw error
-    }
-
-    // Format transactions
-    const formattedTransactions = data.map((transaction) => ({
-      id: transaction.id,
-      type: transaction.type,
-      quantity: transaction.quantity,
-      reason: transaction.reason,
-      notes: transaction.notes,
-      createdAt: transaction.created_at,
-      userName: transaction.user?.name || "Unknown",
-    }))
-
-    return { data: formattedTransactions, error: null }
+    return { data, error }
   } catch (error) {
     console.error("Error getting inventory transactions:", error)
     return { data: null, error }

@@ -19,28 +19,15 @@ class IndexedDBService {
   private dbName = "RetailBandhuOfflineDB"
   private dbVersion = 1
   private db: IDBDatabase | null = null
-  private isClient = false
 
   constructor() {
-    // Check if we're in a browser environment
-    this.isClient = typeof window !== "undefined"
-
-    // Only initialize if we're in a browser
-    if (this.isClient) {
-      this.initDB()
-    }
+    this.initDB()
   }
 
   private initDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       if (this.db) {
         resolve(this.db)
-        return
-      }
-
-      // Safety check for server-side rendering
-      if (!this.isClient) {
-        reject(new Error("IndexedDB is not available in server environment"))
         return
       }
 
@@ -76,9 +63,6 @@ class IndexedDBService {
 
   // Add a pending operation to be synced when online
   async addPendingOperation(operation: Omit<PendingOperation, "id" | "timestamp">): Promise<string> {
-    // Return a dummy ID if not in browser
-    if (!this.isClient) return "server-side-dummy-id"
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -99,9 +83,6 @@ class IndexedDBService {
 
   // Get all pending operations
   async getPendingOperations(): Promise<PendingOperation[]> {
-    // Return empty array if not in browser
-    if (!this.isClient) return []
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -116,9 +97,6 @@ class IndexedDBService {
 
   // Delete a pending operation
   async deletePendingOperation(id: string): Promise<void> {
-    // No-op if not in browser
-    if (!this.isClient) return
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -133,9 +111,6 @@ class IndexedDBService {
 
   // Store data for offline use
   async storeOfflineData(key: string, data: any): Promise<void> {
-    // No-op if not in browser
-    if (!this.isClient) return
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -155,9 +130,6 @@ class IndexedDBService {
 
   // Get stored offline data
   async getOfflineData(key: string): Promise<any> {
-    // Return null if not in browser
-    if (!this.isClient) return null
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -179,9 +151,6 @@ class IndexedDBService {
 
   // Delete stored offline data
   async deleteOfflineData(key: string): Promise<void> {
-    // No-op if not in browser
-    if (!this.isClient) return
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {
@@ -196,9 +165,6 @@ class IndexedDBService {
 
   // Clear all offline data
   async clearOfflineData(): Promise<void> {
-    // No-op if not in browser
-    if (!this.isClient) return
-
     const db = await this.initDB()
 
     return new Promise((resolve, reject) => {

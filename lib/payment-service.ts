@@ -1,4 +1,5 @@
 import { supabase } from "./supabase-client"
+import { updatePaymentStatus } from "./order-service"
 import { createNotification } from "./notification-service"
 
 // Process payment
@@ -116,6 +117,9 @@ export async function getPaymentsByUser(userId: string, role: string): Promise<{
     return { data: null, error }
   }
 }
+
+// Add the missing function
+export const getPaymentsByUserId = getPaymentsByUser
 
 // Get payment statistics
 export async function getPaymentStatistics(userId: string, role: string): Promise<{ data: any | null; error: any }> {
@@ -244,25 +248,21 @@ export async function refundPayment(paymentId: string, amount?: number): Promise
   }
 }
 
-// Mark COD payment as collected
+// Add the missing function for COD payments
 export async function markCodPaymentCollected(
   orderId: string,
   collectedBy: string,
 ): Promise<{ success: boolean; error: any }> {
   try {
     // Get order details
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("payment_method, total_amount, retailer_id, wholesaler_id")
-      .eq("id", orderId)
-      .single()
+    const { data: order, error: orderError } = await supabase.from("orders").select("*").eq("id", orderId).single()
 
     if (orderError) {
       throw orderError
     }
 
     if (order.payment_method !== "cod") {
-      throw new Error("Order is not a COD payment")
+      throw new Error("This order is not a Cash on Delivery order")
     }
 
     // Create payment record
@@ -270,9 +270,10 @@ export async function markCodPaymentCollected(
       order_id: orderId,
       amount: order.total_amount,
       payment_method: "cod",
+      payment_details: { collected_by: collectedBy },
       status: "completed",
-      payment_details: { collected_by: collectedBy, collected_at: new Date().toISOString() },
       transaction_id: `COD${Date.now()}`,
+      created_at: new Date().toISOString(),
     })
 
     if (paymentError) {
@@ -280,13 +281,7 @@ export async function markCodPaymentCollected(
     }
 
     // Update order payment status
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        payment_status: "completed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
+    const { success, error: updateError } = await updatePaymentStatus(orderId, "completed")
 
     if (updateError) {
       throw updateError
@@ -296,7 +291,7 @@ export async function markCodPaymentCollected(
     await createNotification({
       user_id: order.retailer_id,
       title: "COD Payment Collected",
-      message: `Cash payment for order #${orderId.slice(0, 8)} has been collected.`,
+      message: `Your cash payment for order #${orderId.slice(0, 8)} has been collected.`,
       type: "payment",
       reference_id: orderId,
     })
@@ -312,33 +307,6 @@ export async function markCodPaymentCollected(
     return { success: true, error: null }
   } catch (error) {
     console.error("Error marking COD payment as collected:", error)
-    return { success: false, error }
-  }
-}
-
-// Get payments by user ID (alias for getPaymentsByUser for compatibility)
-export async function getPaymentsByUserId(userId: string, role: string): Promise<{ data: any[] | null; error: any }> {
-  return await getPaymentsByUser(userId, role)
-}
-
-// Update payment status for an order
-export async function updatePaymentStatus(orderId: string, status: string): Promise<{ success: boolean; error: any }> {
-  try {
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        payment_status: status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true, error: null }
-  } catch (error) {
-    console.error("Error updating payment status:", error)
     return { success: false, error }
   }
 }

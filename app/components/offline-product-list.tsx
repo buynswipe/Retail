@@ -8,6 +8,12 @@ import { WifiOff, ShoppingCart, Package } from "lucide-react"
 import indexedDBService from "@/lib/indexed-db"
 import { useCart } from "@/lib/cart-context"
 import { useTranslation } from "react-i18next"
+\
+### Continuing Retail Bandhu Implementation: Retailer Product Browsing and Ordering
+
+// Now that we've implemented the inventory management system for wholesalers, let's continue by implementing the retailer's product browsing and ordering system. This is a critical component that connects directly with the inventory system we just built.
+
+// First, let's create the types for our product browsing and ordering system:
 
 interface Product {
   id: string

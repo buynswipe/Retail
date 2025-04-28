@@ -22,6 +22,9 @@ export async function getAllProducts(filters = {}) {
   return await query.order("created_at", { ascending: false })
 }
 
+// Add the missing function
+export const getProducts = getAllProducts
+
 // Get product by ID
 export async function getProductById(id) {
   const supabase = createClient()
@@ -87,11 +90,6 @@ export async function searchProducts(query) {
     .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
     .ilike("name", `%${query}%`)
     .order("created_at", { ascending: false })
-}
-
-// Get products (alias for getAllProducts for compatibility)
-export async function getProducts(filters = {}) {
-  return await getAllProducts(filters)
 }
 
 // Get featured products

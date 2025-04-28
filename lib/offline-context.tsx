@@ -97,10 +97,17 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [])
 
-  // Function to manually sync pending operations
+  // Update the syncPendingOperations function to handle the case when Service Worker is not available
   const syncPendingOperations = async () => {
     if (!isOnline) {
       return { success: false, message: "Device is offline" }
+    }
+
+    // Check if we're in the v0 preview environment
+    const isV0Preview = typeof window !== "undefined" && window.location.hostname.includes("vusercontent.net")
+
+    if (isV0Preview) {
+      return { success: true, message: "Service Worker sync not available in preview mode" }
     }
 
     try {

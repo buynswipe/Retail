@@ -30,6 +30,18 @@ export interface UpdateProductData {
   is_active?: boolean
 }
 
+// Get product by ID
+export async function getProductById(productId: string): Promise<{ data: Product | null; error: any }> {
+  try {
+    const { data, error } = await supabase.from("products").select("*").eq("id", productId).single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting product:", error)
+    return { data: null, error }
+  }
+}
+
 // Get products by wholesaler ID
 export async function getProductsByWholesaler(wholesalerId: string): Promise<{ data: Product[] | null; error: any }> {
   try {

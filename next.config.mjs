@@ -25,6 +25,7 @@ const nextConfig = {
   // Optimize for Vercel deployment
   poweredByHeader: false,
   compress: true,
+  swcMinify: true
 }
 
 export default nextConfig

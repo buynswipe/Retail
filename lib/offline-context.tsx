@@ -12,6 +12,7 @@ interface OfflineContextType {
   pendingOperationsCount: number
   syncPendingOperations: () => Promise<any>
   lastSyncTime: Date | null
+  isInitialized: boolean
 }
 
 const OfflineContext = createContext<OfflineContextType>({
@@ -20,6 +21,7 @@ const OfflineContext = createContext<OfflineContextType>({
   pendingOperationsCount: 0,
   syncPendingOperations: async () => ({}),
   lastSyncTime: null,
+  isInitialized: false,
 })
 
 export const useOffline = () => useContext(OfflineContext)
@@ -28,9 +30,20 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isOnline, setIsOnline] = useState(true)
   const [pendingOperations, setPendingOperations] = useState<any[]>([])
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Check if we're in the v0 preview environment
+  const isV0Preview = typeof window !== "undefined" && window.location.hostname.includes("vusercontent.net")
 
   // Check online status on mount and when it changes
   useEffect(() => {
+    // In v0 preview, we're always "online" but using memory storage
+    if (isV0Preview) {
+      setIsOnline(true)
+      setIsInitialized(true)
+      return
+    }
+
     const updateOnlineStatus = () => {
       const online = checkOnlineStatus()
       setIsOnline(online)
@@ -48,14 +61,21 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
     window.addEventListener("online", updateOnlineStatus)
     window.addEventListener("offline", updateOnlineStatus)
 
+    setIsInitialized(true)
+
     return () => {
       window.removeEventListener("online", updateOnlineStatus)
       window.removeEventListener("offline", updateOnlineStatus)
     }
-  }, [pendingOperations.length])
+  }, [pendingOperations.length, isV0Preview])
 
   // Check for pending operations periodically
   useEffect(() => {
+    // Skip in v0 preview
+    if (isV0Preview) {
+      return
+    }
+
     const checkPendingOperations = async () => {
       try {
         const operations = await indexedDBService.getPendingOperations()
@@ -72,10 +92,15 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const interval = setInterval(checkPendingOperations, 30000) // Check every 30 seconds
 
     return () => clearInterval(interval)
-  }, [])
+  }, [isV0Preview])
 
   // Listen for sync success messages from service worker
   useEffect(() => {
+    // Skip in v0 preview
+    if (isV0Preview) {
+      return
+    }
+
     const handleSyncMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === "SYNC_SUCCESS") {
         // Refresh pending operations
@@ -95,7 +120,7 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
         navigator.serviceWorker.removeEventListener("message", handleSyncMessage)
       }
     }
-  }, [])
+  }, [isV0Preview])
 
   // Update the syncPendingOperations function to handle the case when Service Worker is not available
   const syncPendingOperations = async () => {
@@ -103,9 +128,7 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: "Device is offline" }
     }
 
-    // Check if we're in the v0 preview environment
-    const isV0Preview = typeof window !== "undefined" && window.location.hostname.includes("vusercontent.net")
-
+    // In v0 preview, just return success
     if (isV0Preview) {
       return { success: true, message: "Service Worker sync not available in preview mode" }
     }
@@ -135,6 +158,7 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
         pendingOperationsCount: pendingOperations.length,
         syncPendingOperations,
         lastSyncTime,
+        isInitialized,
       }}
     >
       {children}

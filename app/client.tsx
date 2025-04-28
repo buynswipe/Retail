@@ -9,14 +9,33 @@ import { NotificationProvider } from "@/lib/notification-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { OfflineProvider } from "@/lib/offline-context"
 import { registerServiceWorker } from "@/lib/service-worker"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import initializeDemoData from "@/lib/demo-data-service"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const [isDemoDataInitialized, setIsDemoDataInitialized] = useState(false)
+
   useEffect(() => {
+    // Register service worker (will be skipped in v0 preview)
     registerServiceWorker()
-  }, [])
+
+    // Initialize demo data
+    const setupDemoData = async () => {
+      if (!isDemoDataInitialized) {
+        try {
+          await initializeDemoData()
+          setIsDemoDataInitialized(true)
+          console.log("Demo data initialized successfully")
+        } catch (error) {
+          console.error("Error initializing demo data:", error)
+        }
+      }
+    }
+
+    setupDemoData()
+  }, [isDemoDataInitialized])
 
   return (
     <html lang="en">

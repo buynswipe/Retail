@@ -1,5 +1,6 @@
 import { supabase } from "./supabase-client"
 import type { UserRole } from "./supabase-client"
+import { demoUsers } from "./demo-data-service"
 
 export interface SignUpData {
   phone: string
@@ -40,7 +41,8 @@ export async function sendOtp(phone: string): Promise<{ success: boolean; error?
     console.log(`Sending OTP to ${phone}`)
 
     // For demo users, always succeed
-    if (["1234567890", "9876543210", "9876543211", "9876543212"].includes(phone)) {
+    const demoPhones = demoUsers.map((user) => user.phone_number)
+    if (demoPhones.includes(phone)) {
       return { success: true }
     }
 
@@ -68,14 +70,28 @@ export async function verifyOtp(
   data: VerifyOtpData,
 ): Promise<{ success: boolean; userData?: UserData; error?: string }> {
   try {
-    // In a real app, this would verify the OTP
-    // For now, we'll simulate success for demo users
+    // Check for demo users first
+    const demoUser = demoUsers.find((user) => user.phone_number === data.phone)
 
-    if (!["1234567890", "9876543210", "9876543211", "9876543212"].includes(data.phone)) {
-      // For non-demo users, check if OTP is valid (always 123456 for demo)
-      if (data.otp !== "123456") {
-        return { success: false, error: "Invalid OTP. Please try again." }
+    if (demoUser) {
+      // For demo users, any OTP works
+      return {
+        success: true,
+        userData: {
+          id: demoUser.id,
+          phone: demoUser.phone_number,
+          role: demoUser.role as UserRole,
+          name: demoUser.name,
+          businessName: demoUser.business_name,
+          pinCode: demoUser.pin_code,
+          isApproved: demoUser.is_approved,
+        },
       }
+    }
+
+    // For non-demo users, check if OTP is valid (always 123456 for demo)
+    if (data.otp !== "123456") {
+      return { success: false, error: "Invalid OTP. Please try again." }
     }
 
     // Get user data

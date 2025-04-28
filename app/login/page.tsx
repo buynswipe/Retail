@@ -1,209 +1,308 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/lib/auth-context"
+import Link from "next/link"
+import { Mic } from "lucide-react"
 import { TranslationProvider, useTranslation } from "../components/translation-provider"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 import Navbar from "../components/navbar"
 import Footer from "../components/footer"
-import VoiceButton from "../components/voice-button"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { sendOtp, verifyOtp } from "@/lib/auth-service"
-import { useAuth } from "@/lib/auth-context"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 
+// Create a separate LoginForm component that uses the translation hook
 function LoginForm() {
-  const { t, language } = useTranslation()
-  const [step, setStep] = useState(1)
   const [phoneNumber, setPhoneNumber] = useState("")
   const [otp, setOtp] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
   const [error, setError] = useState("")
-  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
   const { setUser } = useAuth()
+  const router = useRouter()
+  const { t, language } = useTranslation()
 
-  const handleVoiceInput = (text: string) => {
-    // Clean up voice input to get only digits
-    const digits = text.replace(/\D/g, "")
-    if (step === 1) {
-      setPhoneNumber(digits)
-    } else if (step === 2) {
-      setOtp(digits)
+  // Voice input functionality
+  const [isListening, setIsListening] = useState(false)
+  const [transcript, setTranscript] = useState("")
+
+  const startListening = () => {
+    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+      setIsListening(true)
+
+      // Use browser's speech recognition API
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      const recognition = new SpeechRecognition()
+
+      recognition.lang = language === "hi" ? "hi-IN" : "en-US"
+      recognition.interimResults = false
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript
+        setTranscript(transcript)
+
+        // Extract numbers from speech
+        const numericInput = transcript.replace(/\D/g, "")
+        if (numericInput) {
+          setPhoneNumber(numericInput)
+        }
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognition.onerror = () => {
+        setIsListening(false)
+      }
+
+      recognition.start()
+    } else {
+      toast({
+        title: "Not Supported",
+        description: "Speech recognition is not supported in your browser.",
+        variant: "destructive",
+      })
     }
   }
 
   const handleSendOtp = async () => {
+    if (!phoneNumber || phoneNumber.length !== 10) {
+      setError("Please enter a valid 10-digit phone number")
+      return
+    }
+
     setIsLoading(true)
-    setError("")
 
     try {
-      const result = await sendOtp(phoneNumber)
-
-      if (result.success) {
-        setStep(2)
-        toast({
-          title: "OTP Sent",
-          description: "A verification code has been sent to your WhatsApp.",
-        })
-      } else {
-        setError(result.error || "Failed to send OTP. Please try again.")
-      }
+      // In a real app, we would send an OTP to the phone number
+      // For demo purposes, we'll just set otpSent to true
+      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulate API call
+      setOtpSent(true)
+      setError("")
+      toast({
+        title: "OTP Sent",
+        description: "A verification code has been sent to your WhatsApp.",
+      })
     } catch (error) {
-      setError("An unexpected error occurred. Please try again.")
-      console.error("Error sending OTP:", error)
+      setError("Failed to send OTP. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleVerifyOtp = async () => {
+  const handleLogin = async () => {
+    if (!otp || otp.length !== 6) {
+      setError("Please enter a valid 6-digit OTP")
+      return
+    }
+
     setIsLoading(true)
-    setError("")
 
     try {
-      const result = await verifyOtp({ phone: phoneNumber, otp })
+      // For demo purposes, any 6-digit OTP is valid
+      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulate API call
 
-      if (result.success && result.userData) {
-        // Store user data
-        localStorage.setItem("currentUser", JSON.stringify(result.userData))
-        setUser(result.userData)
+      // Get user role based on phone number
+      let role = "retailer" // Default role
+      if (phoneNumber === "1234567890") role = "admin"
+      else if (phoneNumber === "9876543211") role = "wholesaler"
+      else if (phoneNumber === "9876543212") role = "delivery"
 
-        // Redirect based on role
-        if (result.userData.role === "admin") {
-          router.push("/admin/dashboard")
-        } else if (result.userData.role === "retailer") {
-          router.push("/retailer/dashboard")
-        } else if (result.userData.role === "wholesaler") {
-          router.push("/wholesaler/dashboard")
-        } else if (result.userData.role === "delivery") {
-          router.push("/delivery/dashboard")
-        }
-
-        toast({
-          title: "Login Successful",
-          description: "You have been logged in successfully.",
-        })
-      } else {
-        setError(result.error || "Failed to verify OTP. Please try again.")
+      const userData = {
+        id: `user-${Date.now()}`,
+        phone_number: phoneNumber,
+        role: role,
+        name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+        business_name: role === "retailer" ? "Demo Shop" : "Demo Business",
+        created_at: new Date().toISOString(),
       }
+
+      // Store user data
+      localStorage.setItem("currentUser", JSON.stringify(userData))
+      setUser(userData)
+
+      // Redirect based on role
+      if (role === "admin") {
+        router.push("/admin/dashboard")
+      } else if (role === "retailer") {
+        router.push("/retailer/dashboard")
+      } else if (role === "wholesaler") {
+        router.push("/wholesaler/dashboard")
+      } else if (role === "delivery") {
+        router.push("/delivery/dashboard")
+      }
+
+      toast({
+        title: "Login Successful",
+        description: "You have been logged in successfully.",
+      })
     } catch (error) {
-      setError("An unexpected error occurred. Please try again.")
-      console.error("Error verifying OTP:", error)
+      setError("Login failed. Please try again.")
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleDemoLogin = async (demoPhone: string) => {
+    setPhoneNumber(demoPhone)
+    setOtp("123456") // Set a default OTP for demo accounts
+    setOtpSent(true)
+
+    // Wait a bit then trigger login
+    setTimeout(() => {
+      handleLogin()
+    }, 500)
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-24">
-      <Card className="w-full max-w-lg shadow-lg">
-        <CardHeader className="space-y-2">
-          <CardTitle className="text-3xl font-bold text-center">{t("login.title")}</CardTitle>
-          <CardDescription className="text-xl text-center">
-            {step === 1 && "Enter your phone number to log in"}
-            {step === 2 && "Enter the OTP sent to your WhatsApp"}
+    <div className="flex-grow flex items-center justify-center bg-gray-50 p-4 py-24">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">{t("login.title")}</CardTitle>
+          <CardDescription>
+            {!otpSent ? t("Enter your phone number to log in") : t("Enter the OTP sent to your WhatsApp")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {error && <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>{t("Error")}</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-          {step === 1 && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-xl">
+          {!otpSent ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                   {t("phone")}
-                </Label>
-                <div className="flex gap-2 items-center">
+                </label>
+                <div className="flex">
                   <Input
                     id="phone"
                     type="tel"
+                    placeholder="9876543210"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="9876543210"
-                    className="text-xl h-16"
+                    className="flex-1"
                   />
-                  <VoiceButton onText={handleVoiceInput} language={language} />
+                  <Button type="button" variant="outline" size="icon" className="ml-2" onClick={startListening}>
+                    <Mic className={isListening ? "text-red-500" : ""} />
+                    <span className="sr-only">{t("Use voice input")}</span>
+                  </Button>
                 </div>
               </div>
-              <Button
-                onClick={handleSendOtp}
-                className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={phoneNumber.length !== 10 || isLoading}
-              >
-                {isLoading ? "Sending..." : t("send.otp")}
+              <Button className="w-full" onClick={handleSendOtp} disabled={isLoading || phoneNumber.length !== 10}>
+                {isLoading ? t("Sending...") : t("send.otp")}
               </Button>
-
-              <div className="text-center mt-4">
-                <p className="text-lg mb-2">Demo Accounts:</p>
-                <p className="text-md">Admin: 1234567890</p>
-                <p className="text-md">Retailer: 9876543210</p>
-                <p className="text-md">Wholesaler: 9876543211</p>
-                <p className="text-md">Delivery: 9876543212</p>
-              </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="otp" className="text-xl">
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-1">
                   {t("otp")}
-                </Label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    id="otp"
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    placeholder="123456"
-                    className="text-xl h-16"
-                    maxLength={6}
-                  />
-                  <VoiceButton onText={handleVoiceInput} language={language} />
-                </div>
+                </label>
+                <Input
+                  id="otp"
+                  type="text"
+                  placeholder="123456"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  maxLength={6}
+                />
               </div>
-              <Button
-                onClick={handleVerifyOtp}
-                className="w-full h-16 text-xl bg-blue-500 hover:bg-blue-600"
-                disabled={otp.length !== 6 || isLoading}
-              >
-                {isLoading ? "Verifying..." : t("verify")}
+              <Button className="w-full" onClick={handleLogin} disabled={isLoading || otp.length !== 6}>
+                {isLoading ? t("Verifying...") : t("verify")}
               </Button>
-
-              <div className="text-center mt-4">
-                <p className="text-lg">Enter any 6 digits as OTP for demo</p>
-              </div>
-            </>
+              <Button variant="outline" className="w-full" onClick={() => setOtpSent(false)} disabled={isLoading}>
+                {t("Change Phone Number")}
+              </Button>
+            </div>
           )}
 
-          <div className="text-center mt-6">
-            <p className="text-lg">
-              Don't have an account?{" "}
-              <Link href="/signup" className="text-blue-500 hover:underline">
-                Sign up
-              </Link>
+          <Separator className="my-6" />
+
+          <div className="space-y-4">
+            <h3 className="text-center font-medium">{t("Demo Accounts")}</h3>
+            <div className="grid gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleDemoLogin("1234567890")}
+                disabled={isLoading}
+                className="justify-start h-auto py-2"
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{t("Admin")}</span>
+                  <span className="text-sm text-gray-500">1234567890</span>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleDemoLogin("9876543210")}
+                disabled={isLoading}
+                className="justify-start h-auto py-2"
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{t("Retailer")}</span>
+                  <span className="text-sm text-gray-500">9876543210</span>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleDemoLogin("9876543211")}
+                disabled={isLoading}
+                className="justify-start h-auto py-2"
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{t("Wholesaler")}</span>
+                  <span className="text-sm text-gray-500">9876543211</span>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleDemoLogin("9876543212")}
+                disabled={isLoading}
+                className="justify-start h-auto py-2"
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{t("Delivery")}</span>
+                  <span className="text-sm text-gray-500">9876543212</span>
+                </div>
+              </Button>
+            </div>
+            <p className="text-xs text-center text-gray-500 mt-2">
+              {t("Click any demo account to log in instantly with test data")}
             </p>
           </div>
         </CardContent>
+        <CardFooter className="flex justify-center">
+          <p className="text-sm text-gray-600">
+            {t("Don't have an account?")}{" "}
+            <Link href="/signup" className="text-blue-600 hover:underline">
+              {t("signup.title")}
+            </Link>
+          </p>
+        </CardFooter>
       </Card>
-      <Toaster />
     </div>
   )
 }
 
+// Main page component that wraps the LoginForm with TranslationProvider
 export default function LoginPage() {
   return (
     <TranslationProvider>
       <div className="flex flex-col min-h-screen">
         <Navbar />
-        <main className="flex-grow pt-16 pb-16">
-          <LoginForm />
-        </main>
+        <LoginForm />
         <Footer />
+        <Toaster />
       </div>
     </TranslationProvider>
   )

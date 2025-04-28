@@ -12,7 +12,8 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
-    serverActions: true,
+    // Fix: serverActions should be an object, not a boolean
+    serverComponentsExternalPackages: [],
   },
 };
 

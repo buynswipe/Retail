@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useCart } from "@/lib/cart-context"
-import { useTranslation } from "@/app/components/translation-provider"
+import { useSafeTranslation } from "@/lib/use-safe-translation"
 import { useOffline } from "@/lib/offline-context"
 import Navbar from "@/app/components/navbar"
 import { CartDrawer } from "@/app/components/cart/cart-drawer"
@@ -23,11 +23,15 @@ import { Search, Package, ShoppingCart, Filter, Store, Check, AlertTriangle, X }
 import Image from "next/image"
 import { OfflineProductList } from "@/app/components/offline-product-list"
 
+// Add dynamic export to prevent static generation
+export const dynamic = "force-dynamic"
+
 export default function BrowsePage() {
-  const { t } = useTranslation()
+  const { t } = useSafeTranslation() // Use our safe translation hook
   const { user } = useAuth()
   const { addItem, items } = useCart()
   const { isOffline } = useOffline()
+  const [isMounted, setIsMounted] = useState(false)
 
   const [wholesalers, setWholesalers] = useState<User[]>([])
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("")
@@ -38,8 +42,15 @@ export default function BrowsePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [categories, setCategories] = useState<string[]>([])
 
+  // Set mounted state
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   // Load wholesalers on initial render
   useEffect(() => {
+    if (!isMounted) return
+
     const loadWholesalers = async () => {
       try {
         const { data, error } = await getWholesalers()
@@ -63,13 +74,13 @@ export default function BrowsePage() {
     if (!isOffline) {
       loadWholesalers()
     }
-  }, [isOffline])
+  }, [isOffline, isMounted])
 
   // Load products when a wholesaler is selected
   useEffect(() => {
-    const loadProducts = async () => {
-      if (!selectedWholesaler) return
+    if (!isMounted || !selectedWholesaler) return
 
+    const loadProducts = async () => {
       setIsLoading(true)
       try {
         const { data, error } = await getProductsByWholesaler(selectedWholesaler)
@@ -98,10 +109,12 @@ export default function BrowsePage() {
     if (!isOffline) {
       loadProducts()
     }
-  }, [selectedWholesaler, isOffline])
+  }, [selectedWholesaler, isOffline, isMounted])
 
   // Filter products based on search query and category
   useEffect(() => {
+    if (!isMounted) return
+
     let filtered = [...products]
 
     // Apply search filter
@@ -120,7 +133,7 @@ export default function BrowsePage() {
     }
 
     setFilteredProducts(filtered)
-  }, [searchQuery, categoryFilter, products])
+  }, [searchQuery, categoryFilter, products, isMounted])
 
   const handleAddToCart = (product: Product) => {
     addItem(product, 1)
@@ -132,6 +145,21 @@ export default function BrowsePage() {
 
   const isInCart = (productId: string) => {
     return items.some((item) => item.product.id === productId)
+  }
+
+  // Show loading state during SSR or when not mounted
+  if (!isMounted) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <div className="flex-grow pt-20 pb-20 px-4">
+          <div className="container mx-auto max-w-6xl">
+            <div className="text-center py-12">
+              <p className="text-lg text-gray-500">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (isOffline) {

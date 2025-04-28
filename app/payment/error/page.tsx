@@ -7,11 +7,26 @@ import { AlertCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import Navbar from "@/app/components/navbar"
 import { useTranslation } from "@/app/components/translation-provider"
+import { useEffect, useState } from "react"
 
 export default function PaymentErrorPage() {
-  const { t } = useTranslation()
   const searchParams = useSearchParams()
   const errorMessage = searchParams.get("message") || "An error occurred during payment processing"
+
+  // Use state to avoid hydration mismatch
+  const [mounted, setMounted] = useState(false)
+  const { t } = useTranslation()
+
+  // Only render with translations after component has mounted on client
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Use fallback text for server-side rendering
+  const translate = (text: string) => {
+    if (!mounted) return text
+    return t(text)
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -25,23 +40,25 @@ export default function PaymentErrorPage() {
                   <AlertCircle className="h-8 w-8 text-red-600" />
                 </div>
               </div>
-              <CardTitle className="text-center text-2xl">{t("Payment Failed")}</CardTitle>
+              <CardTitle className="text-center text-2xl">{translate("Payment Failed")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-center text-gray-600 mb-6">{t(errorMessage)}</p>
+              <p className="text-center text-gray-600 mb-6">{translate(errorMessage)}</p>
               <p className="text-center text-sm text-gray-500">
-                {t("Your payment could not be processed. Please try again or choose a different payment method.")}
+                {translate(
+                  "Your payment could not be processed. Please try again or choose a different payment method.",
+                )}
               </p>
             </CardContent>
             <CardFooter className="flex justify-center gap-4">
               <Button asChild variant="outline">
                 <Link href="/retailer/browse">
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  {t("Continue Shopping")}
+                  {translate("Continue Shopping")}
                 </Link>
               </Button>
               <Button asChild>
-                <Link href="/retailer/checkout/payment">{t("Try Again")}</Link>
+                <Link href="/retailer/checkout/payment">{translate("Try Again")}</Link>
               </Button>
             </CardFooter>
           </Card>

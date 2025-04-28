@@ -1,402 +1,404 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@/lib/auth-context"
-import { useTranslation } from "@/app/components/translation-provider"
-import Navbar from "@/app/components/navbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { TranslationProvider, useTranslation } from "../../components/translation-provider"
+import Navbar from "../../components/navbar"
+import { ShoppingBag, Clock, FileText, Eye, Search, X, Truck, Phone } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAuth } from "@/lib/auth-context"
+import { getOrdersByRetailer, getOrderById } from "@/lib/order-service"
+import type { Order, OrderItem } from "@/lib/order-service"
+import { getDeliveryAssignmentByOrderId } from "@/lib/delivery-service"
+import type { DeliveryAssignment } from "@/lib/delivery-service"
+import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { getRetailerOrders, getOrderStatistics } from "@/lib/order-service"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import {
-  Search,
-  ShoppingBag,
-  Store,
-  Clock,
-  CheckCircle,
-  Package,
-  Truck,
-  AlertTriangle,
-  RotateCcw,
-  X,
-  IndianRupee,
-  Calendar,
-} from "lucide-react"
-import Link from "next/link"
-import Image from "next/image"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-export default function RetailerOrdersPage() {
+function OrdersContent() {
   const { t } = useTranslation()
   const { user } = useAuth()
-  const [orders, setOrders] = useState<any[]>([])
-  const [filteredOrders, setFilteredOrders] = useState<any[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeTab, setActiveTab] = useState("all")
-  const [sortBy, setSortBy] = useState("newest")
-  const [statistics, setStatistics] = useState<any>(null)
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedDelivery, setSelectedDelivery] = useState<DeliveryAssignment | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
-    const loadOrders = async () => {
-      if (!user) return
-
-      setIsLoading(true)
-      try {
-        const [ordersResult, statsResult] = await Promise.all([
-          getRetailerOrders(user.id),
-          getOrderStatistics(user.id, "retailer"),
-        ])
-
-        if (ordersResult.error) throw ordersResult.error
-        if (statsResult.error) throw statsResult.error
-
-        setOrders(ordersResult.data || [])
-        setFilteredOrders(ordersResult.data || [])
-        setStatistics(statsResult.data)
-      } catch (error) {
-        console.error("Failed to load orders:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load orders. Please try again.",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     if (user) {
       loadOrders()
     }
   }, [user])
 
-  useEffect(() => {
-    // Filter and sort orders
-    let result = [...orders]
+  const loadOrders = async () => {
+    if (!user) return
 
-    // Apply status filter
-    if (activeTab !== "all") {
-      result = result.filter((order) => order.status === activeTab)
-    }
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(
-        (order) =>
-          order.id.toLowerCase().includes(query) ||
-          order.wholesaler?.business_name?.toLowerCase().includes(query) ||
-          order.wholesaler?.name?.toLowerCase().includes(query),
-      )
-    }
-
-    // Apply sorting
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case "newest":
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        case "oldest":
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case "price-high-low":
-          return b.total_amount - a.total_amount
-        case "price-low-high":
-          return a.total_amount - b.total_amount
-        default:
-          return 0
+    setIsLoading(true)
+    try {
+      const { data, error } = await getOrdersByRetailer(user.id)
+      if (error) {
+        throw error
       }
+      setOrders(data || [])
+    } catch (error) {
+      console.error("Error loading orders:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load orders. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleViewOrder = async (orderId: string) => {
+    try {
+      const { data: orderData, error: orderError } = await getOrderById(orderId)
+      if (orderError) {
+        throw orderError
+      }
+      setSelectedOrder(orderData)
+
+      // If order is dispatched or delivered, get delivery information
+      if (orderData?.status === "dispatched" || orderData?.status === "delivered") {
+        const { data: deliveryData, error: deliveryError } = await getDeliveryAssignmentByOrderId(orderId)
+        if (!deliveryError) {
+          setSelectedDelivery(deliveryData)
+        }
+      } else {
+        setSelectedDelivery(null)
+      }
+
+      setIsDialogOpen(true)
+    } catch (error) {
+      console.error("Error loading order details:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load order details. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "placed":
+        return "bg-blue-500"
+      case "confirmed":
+        return "bg-green-500"
+      case "rejected":
+        return "bg-red-500"
+      case "dispatched":
+        return "bg-orange-500"
+      case "delivered":
+        return "bg-purple-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  const getPaymentStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-500"
+      case "pending":
+        return "bg-yellow-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     })
-
-    setFilteredOrders(result)
-  }, [orders, activeTab, searchQuery, sortBy])
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Clock className="h-5 w-5 text-amber-500" />
-      case "confirmed":
-        return <CheckCircle className="h-5 w-5 text-blue-500" />
-      case "processing":
-        return <Package className="h-5 w-5 text-purple-500" />
-      case "shipped":
-        return <Truck className="h-5 w-5 text-indigo-500" />
-      case "delivered":
-        return <CheckCircle className="h-5 w-5 text-green-500" />
-      case "cancelled":
-        return <AlertTriangle className="h-5 w-5 text-red-500" />
-      case "returned":
-        return <RotateCcw className="h-5 w-5 text-orange-500" />
-      default:
-        return <Clock className="h-5 w-5 text-gray-500" />
-    }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "bg-amber-100 text-amber-800 border-amber-200"
-      case "confirmed":
-        return "bg-blue-100 text-blue-800 border-blue-200"
-      case "processing":
-        return "bg-purple-100 text-purple-800 border-purple-200"
-      case "shipped":
-        return "bg-indigo-100 text-indigo-800 border-indigo-200"
-      case "delivered":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "cancelled":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "returned":
-        return "bg-orange-100 text-orange-800 border-orange-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
+  // Filter orders based on search query and status filter
+  const filteredOrders = orders.filter((order) => {
+    const matchesSearch =
+      order.order_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.wholesaler_name && order.wholesaler_name.toLowerCase().includes(searchQuery.toLowerCase()))
+
+    const matchesStatus = statusFilter === "all" || order.status === statusFilter
+
+    return matchesSearch && matchesStatus
+  })
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-grow pt-20 pb-20 px-4">
-        <div className="container mx-auto max-w-6xl">
-          <h1 className="text-3xl font-bold mb-6">{t("My Orders")}</h1>
+    <div className="container mx-auto max-w-6xl">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">My Orders</h1>
+      </div>
 
-          {/* Order Statistics */}
-          {statistics && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">{t("Total Orders")}</p>
-                      <h3 className="text-3xl font-bold">{statistics.totalOrders}</h3>
-                    </div>
-                    <ShoppingBag className="h-8 w-8 text-blue-500" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">{t("Active Orders")}</p>
-                      <h3 className="text-3xl font-bold">
-                        {(statistics.ordersByStatus.pending || 0) +
-                          (statistics.ordersByStatus.confirmed || 0) +
-                          (statistics.ordersByStatus.processing || 0) +
-                          (statistics.ordersByStatus.shipped || 0)}
-                      </h3>
-                    </div>
-                    <Clock className="h-8 w-8 text-amber-500" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">{t("Completed Orders")}</p>
-                      <h3 className="text-3xl font-bold">{statistics.ordersByStatus.delivered || 0}</h3>
-                    </div>
-                    <CheckCircle className="h-8 w-8 text-green-500" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">{t("Total Spent")}</p>
-                      <h3 className="text-3xl font-bold">₹{statistics.totalAmount.toLocaleString()}</h3>
-                    </div>
-                    <IndianRupee className="h-8 w-8 text-green-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-              <TabsList className="grid grid-cols-4 md:grid-cols-7">
-                <TabsTrigger value="all">{t("All")}</TabsTrigger>
-                <TabsTrigger value="pending">{t("Pending")}</TabsTrigger>
-                <TabsTrigger value="confirmed">{t("Confirmed")}</TabsTrigger>
-                <TabsTrigger value="processing">{t("Processing")}</TabsTrigger>
-                <TabsTrigger value="shipped">{t("Shipped")}</TabsTrigger>
-                <TabsTrigger value="delivered">{t("Delivered")}</TabsTrigger>
-                <TabsTrigger value="cancelled">{t("Cancelled")}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            <div className="flex gap-2">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder={t("Search orders...")}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-                {searchQuery && (
-                  <button
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                    onClick={() => setSearchQuery("")}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder={t("Sort by")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">{t("Newest First")}</SelectItem>
-                  <SelectItem value="oldest">{t("Oldest First")}</SelectItem>
-                  <SelectItem value="price-high-low">{t("Price: High to Low")}</SelectItem>
-                  <SelectItem value="price-low-high">{t("Price: Low to High")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Orders List */}
-          {isLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <Card key={i}>
-                  <CardContent className="p-6">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div className="flex-1">
-                        <Skeleton className="h-6 w-32 mb-2" />
-                        <Skeleton className="h-4 w-48" />
-                      </div>
-                      <div className="flex-1">
-                        <Skeleton className="h-6 w-32 mb-2" />
-                        <Skeleton className="h-4 w-48" />
-                      </div>
-                      <div className="flex-1">
-                        <Skeleton className="h-6 w-32 mb-2" />
-                        <Skeleton className="h-4 w-48" />
-                      </div>
-                      <div>
-                        <Skeleton className="h-10 w-28" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="text-center py-12">
-              <ShoppingBag className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium mb-2">{t("No orders found")}</h3>
-              <p className="text-gray-500 mb-6">
-                {searchQuery || activeTab !== "all"
-                  ? t("No orders match your search or filter criteria.")
-                  : t("You haven't placed any orders yet.")}
-              </p>
-              <Button asChild>
-                <Link href="/retailer/browse">{t("Browse Products")}</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredOrders.map((order) => (
-                <Card key={order.id} className="overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="p-6">
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-medium">
-                              {t("Order")} #{order.id.slice(0, 8).toUpperCase()}
-                            </h3>
-                            <Badge className={getStatusColor(order.status)}>
-                              {getStatusIcon(order.status)}
-                              <span className="ml-1 capitalize">{t(order.status)}</span>
-                            </Badge>
-                          </div>
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Calendar className="h-4 w-4 mr-1" />
-                            {formatDate(order.created_at)}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Store className="h-4 w-4 text-gray-500" />
-                            <span className="font-medium">
-                              {order.wholesaler?.business_name || order.wholesaler?.name || t("Unknown Wholesaler")}
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {order.wholesaler?.city}, {order.wholesaler?.state}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="font-medium mb-1">{t("Total Amount")}</div>
-                          <div className="text-lg font-bold">{formatCurrency(order.total_amount)}</div>
-                        </div>
-
-                        <Button asChild>
-                          <Link href={`/retailer/orders/${order.id}`}>{t("View Details")}</Link>
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Order Items Preview */}
-                    <div className="border-t bg-gray-50 p-4">
-                      <div className="text-sm font-medium mb-2">{t("Items")}</div>
-                      <div className="flex flex-wrap gap-2">
-                        {order.items.slice(0, 3).map((item: any) => (
-                          <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded border">
-                            <div className="h-8 w-8 bg-gray-100 rounded overflow-hidden">
-                              {item.product?.image_url ? (
-                                <Image
-                                  src={item.product.image_url || "/placeholder.svg"}
-                                  alt={item.product.name}
-                                  width={32}
-                                  height={32}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <Package className="h-4 w-4 m-2 text-gray-400" />
-                              )}
-                            </div>
-                            <span className="text-sm">
-                              {item.quantity} x {item.product?.name}
-                            </span>
-                          </div>
-                        ))}
-                        {order.items.length > 3 && (
-                          <div className="flex items-center bg-white p-2 rounded border">
-                            <span className="text-sm text-gray-500">
-                              +{order.items.length - 3} {t("more items")}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+      {/* Search and Filter */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+          <Input
+            placeholder="Search by order number or wholesaler..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-12 text-lg"
+          />
+          {searchQuery && (
+            <button
+              className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="h-5 w-5" />
+            </button>
           )}
         </div>
-      </main>
+        <div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-12 min-w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Orders</SelectItem>
+              <SelectItem value="placed">Placed</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="dispatched">Dispatched</SelectItem>
+              <SelectItem value="delivered">Delivered</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Orders List */}
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-lg text-gray-500">Loading orders...</p>
+        </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="text-center py-12">
+          <ShoppingBag className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+          <p className="text-lg text-gray-500">
+            {searchQuery || statusFilter !== "all"
+              ? "No orders match your search criteria"
+              : "You haven't placed any orders yet"}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredOrders.map((order) => (
+            <Card key={order.id}>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="h-5 w-5 text-blue-500" />
+                      <h3 className="text-lg font-semibold">{order.order_number}</h3>
+                      <Badge className={getStatusBadgeColor(order.status)}>
+                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="h-4 w-4 text-gray-500" />
+                      <span className="text-gray-500">{formatDate(order.created_at)}</span>
+                    </div>
+                    <div className="mt-2">
+                      <p className="font-medium">Wholesaler: {order.wholesaler_name}</p>
+                      <Badge className={getPaymentStatusBadgeColor(order.payment_status)}>
+                        Payment: {order.payment_status.charAt(0).toUpperCase() + order.payment_status.slice(1)}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="text-center md:text-right">
+                    <p className="text-lg font-semibold">₹{order.total_amount.toFixed(2)}</p>
+                    <p className="text-gray-500">{order.items?.length || 0} items</p>
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="whitespace-nowrap"
+                        onClick={() => handleViewOrder(order.id)}
+                      >
+                        <Eye className="mr-1 h-4 w-4" />
+                        View Details
+                      </Button>
+                      {order.status === "delivered" && (
+                        <Button size="sm" variant="outline" className="whitespace-nowrap">
+                          <FileText className="mr-1 h-4 w-4" />
+                          Invoice
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Order Details Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Order Details</DialogTitle>
+            <DialogDescription>
+              Order #{selectedOrder?.order_number} - {formatDate(selectedOrder?.created_at || "")}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedOrder && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="font-semibold mb-2">Order Information</h3>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      <span className="text-gray-500">Status:</span>{" "}
+                      <Badge className={getStatusBadgeColor(selectedOrder.status)}>
+                        {selectedOrder.status.charAt(0).toUpperCase() + selectedOrder.status.slice(1)}
+                      </Badge>
+                    </p>
+                    <p>
+                      <span className="text-gray-500">Payment Method:</span>{" "}
+                      {selectedOrder.payment_method.toUpperCase()}
+                    </p>
+                    <p>
+                      <span className="text-gray-500">Payment Status:</span>{" "}
+                      <Badge className={getPaymentStatusBadgeColor(selectedOrder.payment_status)}>
+                        {selectedOrder.payment_status.charAt(0).toUpperCase() + selectedOrder.payment_status.slice(1)}
+                      </Badge>
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold mb-2">Wholesaler Information</h3>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      <span className="text-gray-500">Name:</span> {selectedOrder.wholesaler_name}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Delivery Information */}
+              {selectedDelivery && (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <h3 className="font-semibold mb-2 flex items-center">
+                    <Truck className="h-5 w-5 mr-2 text-blue-500" />
+                    Delivery Information
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      <span className="text-gray-500">Status:</span>{" "}
+                      <Badge
+                        className={
+                          selectedDelivery.status === "completed"
+                            ? "bg-green-500"
+                            : selectedDelivery.status === "accepted"
+                              ? "bg-orange-500"
+                              : "bg-blue-500"
+                        }
+                      >
+                        {selectedDelivery.status.charAt(0).toUpperCase() + selectedDelivery.status.slice(1)}
+                      </Badge>
+                    </p>
+                    {selectedDelivery.delivery_partner_name && (
+                      <>
+                        <p>
+                          <span className="text-gray-500">Delivery Partner:</span>{" "}
+                          {selectedDelivery.delivery_partner_name}
+                        </p>
+                        {selectedDelivery.delivery_partner_phone && (
+                          <p>
+                            <span className="text-gray-500">Contact:</span>{" "}
+                            <a
+                              href={`tel:${selectedDelivery.delivery_partner_phone}`}
+                              className="text-blue-500 flex items-center inline-flex"
+                            >
+                              {selectedDelivery.delivery_partner_phone} <Phone className="h-3 w-3 ml-1" />
+                            </a>
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {selectedDelivery.status === "accepted" && selectedDelivery.otp && (
+                      <p>
+                        <span className="text-gray-500">Verification OTP:</span>{" "}
+                        <span className="font-bold">{selectedDelivery.otp}</span>{" "}
+                        <span className="text-xs text-gray-500">(Share with delivery partner upon delivery)</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h3 className="font-semibold mb-2">Order Items</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedOrder.items?.map((item: OrderItem) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.product?.name || "Product"}</TableCell>
+                        <TableCell className="text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-right">₹{item.unit_price.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">₹{item.total_price.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center">
+                  <span>Subtotal</span>
+                  <span>₹{selectedOrder.total_amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm text-gray-500">
+                  <span>Delivery Fee</span>
+                  <span>₹{selectedOrder.delivery_charge.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center font-bold text-lg mt-2">
+                  <span>Total</span>
+                  <span>₹{(selectedOrder.total_amount + selectedOrder.delivery_charge).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Toaster />
     </div>
+  )
+}
+
+export default function OrdersPage() {
+  return (
+    <TranslationProvider>
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow pt-20 pb-20 px-4">
+          <OrdersContent />
+        </main>
+      </div>
+    </TranslationProvider>
   )
 }

@@ -59,14 +59,10 @@
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
     "jspdf": "latest",
-    "i18next": "latest",
     "country-flag-icons": "latest",
     "@supabase/supabase-js": "latest",
     "papaparse": "latest",
-    "jspdf-autotable": "latest",
-    "react-i18next": "latest",
-    "crypto": "latest",
-    "uuid": "latest"
+    "jspdf-autotable": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

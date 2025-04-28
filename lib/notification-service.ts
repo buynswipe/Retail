@@ -1,127 +1,47 @@
-import { supabase, createClient } from "./supabase-client"
-import type { Notification } from "./types"
+import { supabase } from "./supabase-client"
 import type { RealtimeChannel } from "@supabase/supabase-js"
-import { v4 as uuidv4 } from "uuid"
 
-export async function createNotification({
-  user_id,
-  title,
-  message,
-  type,
-  reference_id,
-  message_hindi,
-  priority = "medium",
-}: {
+export interface Notification {
+  id: string
   user_id: string
-  title: string
+  type: "order" | "payment" | "chat" | "system" | "delivery"
   message: string
-  type: "order" | "payment" | "chat" | "system"
-  reference_id?: string
   message_hindi?: string
-  priority?: "low" | "medium" | "high"
-}): Promise<{ success: boolean; error?: string }> {
-  try {
-    const client = createClient()
-    const notification: Partial<Notification> = {
-      id: uuidv4(),
-      user_id,
-      title,
-      message,
-      type,
-      reference_id,
-      message_hindi,
-      priority,
-      is_read: false,
-      created_at: new Date().toISOString(),
-    }
-
-    const { error } = await client.from("notifications").insert(notification)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error creating notification:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
-  }
+  priority: "low" | "medium" | "high"
+  is_read: boolean
+  created_at: string
 }
 
-export async function getNotifications(
-  userId: string,
-  limit = 20,
-  offset = 0,
-): Promise<{ data: Notification[]; error?: string }> {
+export interface NotificationPreference {
+  id: string
+  user_id: string
+  type: "order" | "payment" | "chat" | "system" | "delivery"
+  email_enabled: boolean
+  push_enabled: boolean
+  in_app_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Get notifications for a user
+export async function getNotifications(userId: string): Promise<{ data: Notification[] | null; error: any }> {
   try {
     const { data, error } = await supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
+      .limit(50)
 
-    if (error) {
-      throw error
-    }
-
-    return { data: data || [] }
+    return { data, error }
   } catch (error) {
-    console.error("Error fetching notifications:", error)
-    return { data: [], error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error getting notifications:", error)
+    return { data: null, error }
   }
 }
 
-export async function markNotificationAsRead(notificationId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", notificationId)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error marking notification as read:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
-  }
-}
-
-export async function markAllNotificationsAsRead(userId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", userId)
-      .eq("is_read", false)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error marking all notifications as read:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
-  }
-}
-
-export async function deleteNotification(notificationId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase.from("notifications").delete().eq("id", notificationId)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error deleting notification:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
-  }
-}
-
-export async function getUnreadNotificationsCount(userId: string): Promise<{ count: number; error?: string }> {
+// Get unread notification count for a user
+export async function getUnreadNotificationCount(userId: string): Promise<{ count: number; error: any }> {
   try {
     const { count, error } = await supabase
       .from("notifications")
@@ -129,114 +49,150 @@ export async function getUnreadNotificationsCount(userId: string): Promise<{ cou
       .eq("user_id", userId)
       .eq("is_read", false)
 
-    if (error) {
-      throw error
-    }
-
-    return { count: count || 0 }
+    return { count: count || 0, error }
   } catch (error) {
-    console.error("Error getting unread notifications count:", error)
-    return { count: 0, error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error getting unread notification count:", error)
+    return { count: 0, error }
   }
 }
 
-// Add this export to match the import name being used elsewhere
-export const getUnreadNotificationCount = getUnreadNotificationsCount
-
-// This ensures backward compatibility with code that's importing the function without the 's'
-
-export async function getNotificationPreferences(userId: string): Promise<{ data: any; error?: string }> {
+// Mark a notification as read
+export async function markNotificationAsRead(notificationId: string): Promise<{ success: boolean; error: any }> {
   try {
-    const { data, error } = await supabase.from("notification_preferences").select("*").eq("user_id", userId).single()
+    const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", notificationId)
 
-    if (error && error.code !== "PGRST116") {
-      // PGRST116 is the error code for "no rows returned"
-      throw error
-    }
-
-    // If no preferences found, return default preferences
-    if (!data) {
-      return {
-        data: {
-          user_id: userId,
-          email_notifications: true,
-          push_notifications: true,
-          sms_notifications: true,
-          order_updates: true,
-          payment_updates: true,
-          chat_messages: true,
-          system_updates: true,
-        },
-      }
-    }
-
-    return { data }
+    return { success: !error, error }
   } catch (error) {
-    console.error("Error fetching notification preferences:", error)
-    return { data: null, error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error marking notification as read:", error)
+    return { success: false, error }
   }
 }
 
-export async function updateNotificationPreferences(
-  userId: string,
-  preferences: any,
-): Promise<{ success: boolean; error?: string }> {
+// Mark all notifications as read for a user
+export async function markAllNotificationsAsRead(userId: string): Promise<{ success: boolean; error: any }> {
   try {
-    const { data: existingPrefs, error: fetchError } = await supabase
-      .from("notification_preferences")
-      .select("*")
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
       .eq("user_id", userId)
-      .single()
+      .eq("is_read", false)
 
-    if (fetchError && fetchError.code !== "PGRST116") {
-      throw fetchError
-    }
-
-    if (!existingPrefs) {
-      // Insert new preferences
-      const { error } = await supabase.from("notification_preferences").insert({
-        user_id: userId,
-        ...preferences,
-      })
-
-      if (error) {
-        throw error
-      }
-    } else {
-      // Update existing preferences
-      const { error } = await supabase.from("notification_preferences").update(preferences).eq("user_id", userId)
-
-      if (error) {
-        throw error
-      }
-    }
-
-    return { success: true }
+    return { success: !error, error }
   } catch (error) {
-    console.error("Error updating notification preferences:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error marking all notifications as read:", error)
+    return { success: false, error }
   }
 }
 
-// Add the missing function (singular form)
-export const updateNotificationPreference = updateNotificationPreferences
+// Delete a notification
+export async function deleteNotification(notificationId: string): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase.from("notifications").delete().eq("id", notificationId)
 
-// Store active channels for later unsubscription
-const activeChannels: Map<string, RealtimeChannel> = new Map()
-
-export function subscribeToNotifications(userId: string, callback: (notification: Notification) => void) {
-  if (typeof window === "undefined") return () => {}
-
-  const client = createClient()
-  const channelKey = `user-notifications:${userId}`
-
-  // Clean up any existing subscription for this user
-  if (activeChannels.has(channelKey)) {
-    unsubscribeFromNotifications(channelKey)
+    return { success: !error, error }
+  } catch (error) {
+    console.error("Error deleting notification:", error)
+    return { success: false, error }
   }
+}
 
-  const channel = client
-    .channel(channelKey)
+// Get notification preferences for a user
+export async function getNotificationPreferences(
+  userId: string,
+): Promise<{ data: NotificationPreference[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase.from("notification_preferences").select("*").eq("user_id", userId)
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting notification preferences:", error)
+    return { data: null, error }
+  }
+}
+
+// Update notification preferences for a user
+export async function updateNotificationPreference(
+  preferenceId: string,
+  updates: {
+    email_enabled?: boolean
+    push_enabled?: boolean
+    in_app_enabled?: boolean
+  },
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from("notification_preferences")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", preferenceId)
+
+    return { success: !error, error }
+  } catch (error) {
+    console.error("Error updating notification preference:", error)
+    return { success: false, error }
+  }
+}
+
+// Create default notification preferences for a new user
+export async function createDefaultNotificationPreferences(userId: string): Promise<{ success: boolean; error: any }> {
+  try {
+    const defaultPreferences = [
+      {
+        user_id: userId,
+        type: "order",
+        email_enabled: true,
+        push_enabled: true,
+        in_app_enabled: true,
+      },
+      {
+        user_id: userId,
+        type: "payment",
+        email_enabled: true,
+        push_enabled: true,
+        in_app_enabled: true,
+      },
+      {
+        user_id: userId,
+        type: "chat",
+        email_enabled: false,
+        push_enabled: true,
+        in_app_enabled: true,
+      },
+      {
+        user_id: userId,
+        type: "system",
+        email_enabled: true,
+        push_enabled: false,
+        in_app_enabled: true,
+      },
+      {
+        user_id: userId,
+        type: "delivery",
+        email_enabled: true,
+        push_enabled: true,
+        in_app_enabled: true,
+      },
+    ]
+
+    const { error } = await supabase.from("notification_preferences").insert(defaultPreferences)
+
+    return { success: !error, error }
+  } catch (error) {
+    console.error("Error creating default notification preferences:", error)
+    return { success: false, error }
+  }
+}
+
+// Subscribe to real-time notifications for a user
+export function subscribeToNotifications(
+  userId: string,
+  onNewNotification: (notification: Notification) => void,
+): RealtimeChannel {
+  // Subscribe to INSERT events on the notifications table for this user
+  const channel = supabase
+    .channel(`notifications:${userId}`)
     .on(
       "postgres_changes",
       {
@@ -246,62 +202,16 @@ export function subscribeToNotifications(userId: string, callback: (notification
         filter: `user_id=eq.${userId}`,
       },
       (payload) => {
-        callback(payload.new as Notification)
+        // Call the callback with the new notification
+        onNewNotification(payload.new as Notification)
       },
     )
     .subscribe()
 
-  // Store the channel for later unsubscription
-  activeChannels.set(channelKey, channel)
-
-  return () => {
-    unsubscribeFromNotifications(channelKey)
-  }
+  return channel
 }
 
-// Add the missing unsubscribeFromNotifications function
-export function unsubscribeFromNotifications(channelKey: string): void {
-  if (typeof window === "undefined") return
-
-  const channel = activeChannels.get(channelKey)
-  if (channel) {
-    const client = createClient()
-    client.removeChannel(channel)
-    activeChannels.delete(channelKey)
-  }
-}
-
-// Add the missing createDefaultNotificationPreferences function
-export async function createDefaultNotificationPreferences(
-  userId: string,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const defaultPreferences = {
-      user_id: userId,
-      email_notifications: true,
-      push_notifications: true,
-      sms_notifications: false,
-      order_updates: true,
-      payment_updates: true,
-      chat_messages: true,
-      system_updates: true,
-      marketing_notifications: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    const { error } = await supabase.from("notification_preferences").insert(defaultPreferences)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Error creating default notification preferences:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
+// Unsubscribe from real-time notifications
+export function unsubscribeFromNotifications(channel: RealtimeChannel): void {
+  supabase.removeChannel(channel)
 }

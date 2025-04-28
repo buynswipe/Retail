@@ -1,123 +1,123 @@
-import { createClient } from "@/lib/supabase-client"
+import { supabase } from "./supabase-client"
 
-// Get all products
-export async function getAllProducts(filters = {}) {
-  const supabase = createClient()
-
-  let query = supabase.from("products").select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
-
-  // Apply filters if provided
-  if (filters.category_id) {
-    query = query.eq("category_id", filters.category_id)
-  }
-
-  if (filters.wholesaler_id) {
-    query = query.eq("wholesaler_id", filters.wholesaler_id)
-  }
-
-  if (filters.search) {
-    query = query.ilike("name", `%${filters.search}%`)
-  }
-
-  return await query.order("created_at", { ascending: false })
+export interface Product {
+  id: string
+  wholesaler_id: string
+  name: string
+  description?: string
+  price: number
+  stock_quantity: number
+  image_url?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
-// Add the missing function
-export const getProducts = getAllProducts
+export interface CreateProductData {
+  name: string
+  description?: string
+  price: number
+  stock_quantity: number
+  image_url?: string
+}
 
-// Get product by ID
-export async function getProductById(id) {
-  const supabase = createClient()
+export interface UpdateProductData {
+  name?: string
+  description?: string
+  price?: number
+  stock_quantity?: number
+  image_url?: string
+  is_active?: boolean
+}
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
-    .eq("id", id)
-    .single()
+// Get products by wholesaler ID
+export async function getProductsByWholesaler(wholesalerId: string): Promise<{ data: Product[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("wholesaler_id", wholesalerId)
+      .order("created_at", { ascending: false })
 
-  return { data, error }
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting products:", error)
+    return { data: null, error }
+  }
 }
 
 // Create a new product
-export async function createProduct(productData) {
-  const supabase = createClient()
+export async function createProduct(
+  wholesalerId: string,
+  productData: CreateProductData,
+): Promise<{ data: Product | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .insert({
+        wholesaler_id: wholesalerId,
+        name: productData.name,
+        description: productData.description,
+        price: productData.price,
+        stock_quantity: productData.stock_quantity,
+        image_url: productData.image_url,
+        is_active: true,
+      })
+      .select()
+      .single()
 
-  return await supabase.from("products").insert(productData).select()
+    return { data, error }
+  } catch (error) {
+    console.error("Error creating product:", error)
+    return { data: null, error }
+  }
 }
 
 // Update a product
-export async function updateProduct(id, productData) {
-  const supabase = createClient()
+export async function updateProduct(
+  productId: string,
+  productData: UpdateProductData,
+): Promise<{ data: Product | null; error: any }> {
+  try {
+    const { data, error } = await supabase.from("products").update(productData).eq("id", productId).select().single()
 
-  return await supabase.from("products").update(productData).eq("id", id).select()
+    return { data, error }
+  } catch (error) {
+    console.error("Error updating product:", error)
+    return { data: null, error }
+  }
 }
 
 // Delete a product
-export async function deleteProduct(id) {
-  const supabase = createClient()
+export async function deleteProduct(productId: string): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase.from("products").delete().eq("id", productId)
 
-  return await supabase.from("products").delete().eq("id", id)
+    return { success: !error, error }
+  } catch (error) {
+    console.error("Error deleting product:", error)
+    return { success: false, error }
+  }
 }
 
-// Get products by category
-export async function getProductsByCategory(categoryId) {
-  const supabase = createClient()
+// Upload product image
+export async function uploadProductImage(file: File): Promise<{ url: string | null; error: any }> {
+  try {
+    const fileExt = file.name.split(".").pop()
+    const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`
+    const filePath = `product-images/${fileName}`
 
-  return await supabase
-    .from("products")
-    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
-    .eq("category_id", categoryId)
-    .order("created_at", { ascending: false })
-}
+    const { error } = await supabase.storage.from("product-images").upload(filePath, file)
 
-// Get products by wholesaler
-export async function getProductsByWholesaler(wholesalerId) {
-  const supabase = createClient()
+    if (error) {
+      return { url: null, error }
+    }
 
-  return await supabase
-    .from("products")
-    .select("*, categories(name)")
-    .eq("wholesaler_id", wholesalerId)
-    .order("created_at", { ascending: false })
-}
+    const { data } = supabase.storage.from("product-images").getPublicUrl(filePath)
 
-// Search products
-export async function searchProducts(query) {
-  const supabase = createClient()
-
-  return await supabase
-    .from("products")
-    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
-    .ilike("name", `%${query}%`)
-    .order("created_at", { ascending: false })
-}
-
-// Get featured products
-export async function getFeaturedProducts(limit = 6) {
-  const supabase = createClient()
-
-  return await supabase
-    .from("products")
-    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
-    .eq("is_featured", true)
-    .limit(limit)
-    .order("created_at", { ascending: false })
-}
-
-// Get product reviews
-export async function getProductReviews(productId) {
-  const supabase = createClient()
-
-  return await supabase
-    .from("product_reviews")
-    .select("*, retailer:retailer_id(id, name)")
-    .eq("product_id", productId)
-    .order("created_at", { ascending: false })
-}
-
-// Add product review
-export async function addProductReview(reviewData) {
-  const supabase = createClient()
-
-  return await supabase.from("product_reviews").insert(reviewData).select()
+    return { url: data.publicUrl, error: null }
+  } catch (error) {
+    console.error("Error uploading image:", error)
+    return { url: null, error }
+  }
 }

@@ -1,312 +1,382 @@
 import { supabase } from "./supabase-client"
-import { updatePaymentStatus } from "./order-service"
-import { createNotification } from "./notification-service"
+import type { Order } from "./order-service"
 
-// Process payment
-export async function processPayment(paymentData: {
+export interface Payment {
+  id: string
   order_id: string
   amount: number
-  payment_method: string
+  payment_method: "cod" | "upi"
+  payment_status: "pending" | "completed" | "failed"
+  transaction_id?: string
   upi_id?: string
-  card_details?: any
-}): Promise<{ success: boolean; transaction_id?: string; error: any }> {
-  try {
-    // In a real app, this would integrate with a payment gateway
-    // For now, we'll simulate a successful payment
+  payment_date?: string
+  created_at: string
+  updated_at: string
+}
 
-    // Create a payment record
-    const { data: payment, error: paymentError } = await supabase
+export interface CreatePaymentData {
+  order_id: string
+  amount: number
+  payment_method: "cod" | "upi"
+  upi_id?: string
+}
+
+export interface VerifyPaymentData {
+  payment_id: string
+  transaction_id: string
+}
+
+// Generate a unique payment reference ID
+function generatePaymentRefId(): string {
+  const timestamp = new Date().getTime().toString().slice(-8)
+  const random = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0")
+  return `PAY${timestamp}${random}`
+}
+
+// Create a new payment record
+export async function createPayment(data: CreatePaymentData): Promise<{ data: Payment | null; error: any }> {
+  try {
+    // For COD payments, we'll mark them as pending by default
+    const paymentStatus = data.payment_method === "cod" ? "pending" : "pending"
+
+    // Create payment in database
+    const { data: paymentResult, error: paymentError } = await supabase
       .from("payments")
       .insert({
-        order_id: paymentData.order_id,
-        amount: paymentData.amount,
-        payment_method: paymentData.payment_method,
-        payment_details:
-          paymentData.payment_method === "upi" ? { upi_id: paymentData.upi_id } : paymentData.card_details,
-        status: "completed",
-        transaction_id: `TXN${Date.now()}`,
+        order_id: data.order_id,
+        amount: data.amount,
+        payment_method: data.payment_method,
+        payment_status: paymentStatus,
+        upi_id: data.upi_id,
+        reference_id: generatePaymentRefId(),
       })
       .select()
       .single()
 
     if (paymentError) {
-      throw paymentError
+      return { data: null, error: paymentError }
     }
 
-    // Update order payment status
-    const { success, error: updateError } = await updatePaymentStatus(paymentData.order_id, "completed")
-
-    if (updateError) {
-      throw updateError
-    }
-
-    // Get order details for notification
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("retailer_id, wholesaler_id")
-      .eq("id", paymentData.order_id)
-      .single()
-
-    if (orderError) {
-      throw orderError
-    }
-
-    // Create payment notification
-    await createNotification({
-      user_id: order.retailer_id,
-      title: "Payment Successful",
-      message: `Your payment of ${paymentData.amount.toFixed(2)} for order #${paymentData.order_id.slice(0, 8)} was successful.`,
-      type: "payment",
-      reference_id: paymentData.order_id,
-    })
-
-    await createNotification({
-      user_id: order.wholesaler_id,
-      title: "Payment Received",
-      message: `Payment of ${paymentData.amount.toFixed(2)} for order #${paymentData.order_id.slice(0, 8)} has been received.`,
-      type: "payment",
-      reference_id: paymentData.order_id,
-    })
-
-    return { success: true, transaction_id: payment.transaction_id, error: null }
+    return { data: paymentResult, error: null }
   } catch (error) {
-    console.error("Error processing payment:", error)
-    return { success: false, error }
+    console.error("Error creating payment:", error)
+    return { data: null, error }
   }
 }
 
 // Get payment by order ID
-export async function getPaymentByOrderId(orderId: string): Promise<{ data: any | null; error: any }> {
+export async function getPaymentByOrderId(orderId: string): Promise<{ data: Payment | null; error: any }> {
   try {
     const { data, error } = await supabase.from("payments").select("*").eq("order_id", orderId).single()
 
-    return { data, error }
+    if (error) {
+      return { data: null, error }
+    }
+
+    return { data, error: null }
   } catch (error) {
-    console.error("Error getting payment:", error)
+    console.error("Error fetching payment:", error)
     return { data: null, error }
   }
 }
 
-// Get payments by user ID (retailer or wholesaler)
-export async function getPaymentsByUser(userId: string, role: string): Promise<{ data: any[] | null; error: any }> {
+// Get payment by ID
+export async function getPaymentById(paymentId: string): Promise<{ data: Payment | null; error: any }> {
   try {
-    const { data: orders, error: ordersError } = await supabase
-      .from("orders")
-      .select("id")
-      .eq(role === "retailer" ? "retailer_id" : "wholesaler_id", userId)
+    const { data, error } = await supabase.from("payments").select("*").eq("id", paymentId).single()
 
-    if (ordersError) {
-      throw ordersError
+    if (error) {
+      return { data: null, error }
     }
 
-    if (!orders.length) {
-      return { data: [], error: null }
-    }
-
-    const orderIds = orders.map((order) => order.id)
-
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*, order:orders(*)")
-      .in("order_id", orderIds)
-      .order("created_at", { ascending: false })
-
-    return { data, error }
+    return { data, error: null }
   } catch (error) {
-    console.error("Error getting payments:", error)
+    console.error("Error fetching payment:", error)
     return { data: null, error }
   }
 }
 
-// Add the missing function
-export const getPaymentsByUserId = getPaymentsByUser
-
-// Get payment statistics
-export async function getPaymentStatistics(userId: string, role: string): Promise<{ data: any | null; error: any }> {
+// Update payment status
+export async function updatePaymentStatus(
+  paymentId: string,
+  status: "pending" | "completed" | "failed",
+): Promise<{ success: boolean; error: any }> {
   try {
-    const { data: payments, error: paymentsError } = await getPaymentsByUser(userId, role)
-
-    if (paymentsError) {
-      throw paymentsError
+    const updateData: any = {
+      payment_status: status,
+      updated_at: new Date().toISOString(),
     }
 
-    // Calculate statistics
-    const totalPayments = payments.length
-    const totalAmount = payments.reduce((sum, payment) => sum + payment.amount, 0)
+    // If payment is completed, add payment date
+    if (status === "completed") {
+      updateData.payment_date = new Date().toISOString()
+    }
 
-    // Group by payment method
-    const paymentMethods = {}
-    payments.forEach((payment) => {
-      if (!paymentMethods[payment.payment_method]) {
-        paymentMethods[payment.payment_method] = 0
+    const { error } = await supabase.from("payments").update(updateData).eq("id", paymentId)
+
+    if (error) {
+      return { success: false, error }
+    }
+
+    // If payment is completed, update order payment status
+    if (status === "completed") {
+      // Get order ID from payment
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .select("order_id")
+        .eq("id", paymentId)
+        .single()
+
+      if (paymentError) {
+        return { success: true, error: null } // Still return success for payment update
       }
-      paymentMethods[payment.payment_method]++
-    })
 
-    // Group by month
-    const paymentsByMonth = {}
-    payments.forEach((payment) => {
-      const date = new Date(payment.created_at)
-      const month = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}`
+      // Update order payment status
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          payment_status: "completed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", payment.order_id)
 
-      if (!paymentsByMonth[month]) {
-        paymentsByMonth[month] = 0
+      if (orderError) {
+        console.error("Error updating order payment status:", orderError)
+        return { success: true, error: null } // Still return success for payment update
       }
-      paymentsByMonth[month] += payment.amount
-    })
-
-    return {
-      data: {
-        totalPayments,
-        totalAmount,
-        paymentMethods,
-        paymentsByMonth,
-      },
-      error: null,
     }
-  } catch (error) {
-    console.error("Error getting payment statistics:", error)
-    return { data: null, error }
-  }
-}
-
-// Refund payment
-export async function refundPayment(paymentId: string, amount?: number): Promise<{ success: boolean; error: any }> {
-  try {
-    // Get payment details
-    const { data: payment, error: paymentError } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("id", paymentId)
-      .single()
-
-    if (paymentError) {
-      throw paymentError
-    }
-
-    // In a real app, this would integrate with a payment gateway for refund
-    // For now, we'll simulate a successful refund
-
-    // Create refund record
-    const refundAmount = amount || payment.amount
-    const { error: refundError } = await supabase.from("refunds").insert({
-      payment_id: paymentId,
-      amount: refundAmount,
-      status: "completed",
-      refund_id: `REF${Date.now()}`,
-    })
-
-    if (refundError) {
-      throw refundError
-    }
-
-    // Update payment status
-    const { error: updateError } = await supabase
-      .from("payments")
-      .update({
-        status: amount ? "partially_refunded" : "refunded",
-        refunded_amount: refundAmount,
-      })
-      .eq("id", paymentId)
-
-    if (updateError) {
-      throw updateError
-    }
-
-    // Get order details for notification
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("retailer_id, wholesaler_id")
-      .eq("id", payment.order_id)
-      .single()
-
-    if (orderError) {
-      throw orderError
-    }
-
-    // Create refund notification
-    await createNotification({
-      user_id: order.retailer_id,
-      title: "Refund Processed",
-      message: `A refund of ${refundAmount.toFixed(2)} for order #${payment.order_id.slice(0, 8)} has been processed.`,
-      type: "payment",
-      reference_id: payment.order_id,
-    })
-
-    await createNotification({
-      user_id: order.wholesaler_id,
-      title: "Refund Issued",
-      message: `A refund of ${refundAmount.toFixed(2)} for order #${payment.order_id.slice(0, 8)} has been issued.`,
-      type: "payment",
-      reference_id: payment.order_id,
-    })
 
     return { success: true, error: null }
   } catch (error) {
-    console.error("Error processing refund:", error)
+    console.error("Error updating payment status:", error)
     return { success: false, error }
   }
 }
 
-// Add the missing function for COD payments
-export async function markCodPaymentCollected(
-  orderId: string,
-  collectedBy: string,
-): Promise<{ success: boolean; error: any }> {
+// Verify UPI payment
+export async function verifyUpiPayment(data: VerifyPaymentData): Promise<{ success: boolean; error: any }> {
   try {
-    // Get order details
-    const { data: order, error: orderError } = await supabase.from("orders").select("*").eq("id", orderId).single()
+    // In a real app, you would verify the transaction with a payment gateway
+    // For now, we'll just update the payment record with the transaction ID
 
-    if (orderError) {
-      throw orderError
+    const { error } = await supabase
+      .from("payments")
+      .update({
+        transaction_id: data.transaction_id,
+        payment_status: "completed",
+        payment_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", data.payment_id)
+
+    if (error) {
+      return { success: false, error }
     }
 
-    if (order.payment_method !== "cod") {
-      throw new Error("This order is not a Cash on Delivery order")
-    }
-
-    // Create payment record
-    const { error: paymentError } = await supabase.from("payments").insert({
-      order_id: orderId,
-      amount: order.total_amount,
-      payment_method: "cod",
-      payment_details: { collected_by: collectedBy },
-      status: "completed",
-      transaction_id: `COD${Date.now()}`,
-      created_at: new Date().toISOString(),
-    })
+    // Get order ID from payment
+    const { data: payment, error: paymentError } = await supabase
+      .from("payments")
+      .select("order_id")
+      .eq("id", data.payment_id)
+      .single()
 
     if (paymentError) {
-      throw paymentError
+      return { success: true, error: null } // Still return success for payment update
     }
 
     // Update order payment status
-    const { success, error: updateError } = await updatePaymentStatus(orderId, "completed")
+    const { error: orderError } = await supabase
+      .from("orders")
+      .update({
+        payment_status: "completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", payment.order_id)
 
-    if (updateError) {
-      throw updateError
+    if (orderError) {
+      console.error("Error updating order payment status:", orderError)
+      return { success: true, error: null } // Still return success for payment update
     }
 
-    // Create notifications
-    await createNotification({
-      user_id: order.retailer_id,
-      title: "COD Payment Collected",
-      message: `Your cash payment for order #${orderId.slice(0, 8)} has been collected.`,
-      type: "payment",
-      reference_id: orderId,
+    return { success: true, error: null }
+  } catch (error) {
+    console.error("Error verifying UPI payment:", error)
+    return { success: false, error }
+  }
+}
+
+// Get payments by user ID (retailer or wholesaler)
+export async function getPaymentsByUserId(
+  userId: string,
+  role: "retailer" | "wholesaler",
+): Promise<{ data: (Payment & { order?: Order })[] | null; error: any }> {
+  try {
+    // First get orders for the user
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("id, order_number, total_amount, created_at")
+      .eq(`${role}_id`, userId)
+      .order("created_at", { ascending: false })
+
+    if (ordersError) {
+      return { data: null, error: ordersError }
+    }
+
+    if (orders.length === 0) {
+      return { data: [], error: null }
+    }
+
+    // Get payments for these orders
+    const orderIds = orders.map((order) => order.id)
+    const { data: payments, error: paymentsError } = await supabase
+      .from("payments")
+      .select("*")
+      .in("order_id", orderIds)
+      .order("created_at", { ascending: false })
+
+    if (paymentsError) {
+      return { data: null, error: paymentsError }
+    }
+
+    // Combine payments with order info
+    const paymentsWithOrders = payments.map((payment) => {
+      const order = orders.find((o) => o.id === payment.order_id)
+      return {
+        ...payment,
+        order,
+      }
     })
 
-    await createNotification({
-      user_id: order.wholesaler_id,
-      title: "COD Payment Collected",
-      message: `Cash payment for order #${orderId.slice(0, 8)} has been collected.`,
-      type: "payment",
-      reference_id: orderId,
-    })
+    return { data: paymentsWithOrders, error: null }
+  } catch (error) {
+    console.error("Error fetching payments:", error)
+    return { data: null, error }
+  }
+}
+
+// Mark COD payment as collected (for delivery partners)
+export async function markCodPaymentCollected(
+  paymentId: string,
+  deliveryPartnerId: string,
+): Promise<{ success: boolean; error: any }> {
+  try {
+    // In a real app, you would verify that this delivery partner is assigned to the order
+    // For now, we'll just update the payment status
+
+    const { error } = await supabase
+      .from("payments")
+      .update({
+        payment_status: "completed",
+        payment_date: new Date().toISOString(),
+        collected_by: deliveryPartnerId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", paymentId)
+      .eq("payment_method", "cod") // Only update if it's a COD payment
+
+    if (error) {
+      return { success: false, error }
+    }
+
+    // Get order ID from payment
+    const { data: payment, error: paymentError } = await supabase
+      .from("payments")
+      .select("order_id")
+      .eq("id", paymentId)
+      .single()
+
+    if (paymentError) {
+      return { success: true, error: null } // Still return success for payment update
+    }
+
+    // Update order payment status
+    const { error: orderError } = await supabase
+      .from("orders")
+      .update({
+        payment_status: "completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", payment.order_id)
+
+    if (orderError) {
+      console.error("Error updating order payment status:", orderError)
+      return { success: true, error: null } // Still return success for payment update
+    }
 
     return { success: true, error: null }
   } catch (error) {
     console.error("Error marking COD payment as collected:", error)
     return { success: false, error }
+  }
+}
+
+// Get payment statistics for a user
+export async function getPaymentStatistics(
+  userId: string,
+  role: "retailer" | "wholesaler",
+): Promise<{
+  data: {
+    total_payments: number
+    total_amount: number
+    pending_amount: number
+    completed_amount: number
+  } | null
+  error: any
+}> {
+  try {
+    // First get orders for the user
+    const { data: orders, error: ordersError } = await supabase.from("orders").select("id").eq(`${role}_id`, userId)
+
+    if (ordersError) {
+      return { data: null, error: ordersError }
+    }
+
+    if (orders.length === 0) {
+      return {
+        data: {
+          total_payments: 0,
+          total_amount: 0,
+          pending_amount: 0,
+          completed_amount: 0,
+        },
+        error: null,
+      }
+    }
+
+    // Get payments for these orders
+    const orderIds = orders.map((order) => order.id)
+    const { data: payments, error: paymentsError } = await supabase
+      .from("payments")
+      .select("*")
+      .in("order_id", orderIds)
+
+    if (paymentsError) {
+      return { data: null, error: paymentsError }
+    }
+
+    // Calculate statistics
+    const totalPayments = payments.length
+    const totalAmount = payments.reduce((sum, payment) => sum + payment.amount, 0)
+    const pendingAmount = payments
+      .filter((payment) => payment.payment_status === "pending")
+      .reduce((sum, payment) => sum + payment.amount, 0)
+    const completedAmount = payments
+      .filter((payment) => payment.payment_status === "completed")
+      .reduce((sum, payment) => sum + payment.amount, 0)
+
+    return {
+      data: {
+        total_payments: totalPayments,
+        total_amount: totalAmount,
+        pending_amount: pendingAmount,
+        completed_amount: completedAmount,
+      },
+      error: null,
+    }
+  } catch (error) {
+    console.error("Error fetching payment statistics:", error)
+    return { data: null, error }
   }
 }

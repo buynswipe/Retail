@@ -8,24 +8,9 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['localhost', 'your-project.supabase.co'],
-    formats: ['image/avif', 'image/webp'],
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**.supabase.co',
-        port: '',
-        pathname: '/storage/v1/object/public/**',
-      },
-    ],
+    domains: ['localhost'],
+    unoptimized: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['sharp'],
-  },
-  // Optimize for Vercel deployment
-  poweredByHeader: false,
-  compress: true,
-  swcMinify: true
 }
 
 export default nextConfig

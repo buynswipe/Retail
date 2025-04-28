@@ -7,13 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { WifiOff, ShoppingCart, Package } from "lucide-react"
 import indexedDBService from "@/lib/indexed-db"
 import { useCart } from "@/lib/cart-context"
-import { useTranslation } from "react-i18next"
-\
-### Continuing Retail Bandhu Implementation: Retailer Product Browsing and Ordering
-
-// Now that we've implemented the inventory management system for wholesalers, let's continue by implementing the retailer's product browsing and ordering system. This is a critical component that connects directly with the inventory system we just built.
-
-// First, let's create the types for our product browsing and ordering system:
 
 interface Product {
   id: string
@@ -30,7 +23,6 @@ export function OfflineProductList() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const { addToCart } = useCart()
-  const { t } = useTranslation()
 
   useEffect(() => {
     const loadOfflineProducts = async () => {
@@ -59,7 +51,7 @@ export function OfflineProductList() {
       <div className="flex justify-center items-center h-40">
         <div className="animate-pulse flex flex-col items-center">
           <Package className="h-8 w-8 text-gray-400 mb-2" />
-          <p className="text-gray-500">{t("loadingOfflineProducts")}</p>
+          <p className="text-gray-500">Loading offline products...</p>
         </div>
       </div>
     )
@@ -71,9 +63,9 @@ export function OfflineProductList() {
         <CardHeader>
           <CardTitle className="flex items-center">
             <WifiOff className="h-5 w-5 mr-2 text-yellow-600" />
-            {t("offlineMode")}
+            Offline Mode
           </CardTitle>
-          <CardDescription>{t("noProductsOffline")}</CardDescription>
+          <CardDescription>No products available offline. Connect to the internet to browse products.</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -83,7 +75,7 @@ export function OfflineProductList() {
     <div>
       <div className="flex items-center mb-4">
         <WifiOff className="h-5 w-5 mr-2 text-yellow-600" />
-        <h2 className="text-lg font-medium">{t("offlineModeCached")}</h2>
+        <h2 className="text-lg font-medium">Offline Mode - Cached Products</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -94,7 +86,7 @@ export function OfflineProductList() {
                 <CardTitle>{product.name}</CardTitle>
                 {product._offline && (
                   <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                    {t("offline")}
+                    Offline
                   </Badge>
                 )}
               </div>
@@ -104,15 +96,13 @@ export function OfflineProductList() {
               <p className="text-sm text-gray-500 mb-2">{product.description}</p>
               <div className="flex justify-between items-center">
                 <p className="font-bold">₹{product.price.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">
-                  {t("stock")}: {product.stock}
-                </p>
+                <p className="text-sm text-gray-500">Stock: {product.stock}</p>
               </div>
             </CardContent>
             <CardFooter>
               <Button className="w-full" onClick={() => addToCart(product)} disabled={product.stock <= 0}>
                 <ShoppingCart className="h-4 w-4 mr-2" />
-                {t("addToCart")}
+                Add to Cart
               </Button>
             </CardFooter>
           </Card>

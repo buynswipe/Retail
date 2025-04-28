@@ -1,473 +1,331 @@
-import { supabase, createClient } from "./supabase-client"
-import { v4 as uuidv4 } from "uuid"
-import type { Order, OrderItem, OrderStatus, PaymentStatus } from "./types"
-import { createNotification } from "./notification-service"
+import { supabase } from "./supabase-client"
+import type { Product } from "./product-service"
+import { createDeliveryAssignment } from "./delivery-service"
+
+export interface OrderItem {
+  id: string
+  order_id: string
+  product_id: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  product?: Product
+}
+
+export interface Order {
+  id: string
+  order_number: string
+  retailer_id: string
+  wholesaler_id: string
+  total_amount: number
+  status: "placed" | "confirmed" | "rejected" | "dispatched" | "delivered"
+  payment_method: "cod" | "upi"
+  payment_status: "pending" | "completed"
+  commission: number
+  commission_gst: number
+  delivery_charge: number
+  delivery_charge_gst: number
+  wholesaler_payout: number
+  created_at: string
+  updated_at: string
+  items?: OrderItem[]
+  retailer_name?: string
+  wholesaler_name?: string
+}
+
+export interface CreateOrderData {
+  retailer_id: string
+  wholesaler_id: string
+  items: {
+    product_id: string
+    quantity: number
+    unit_price: number
+    total_price: number
+  }[]
+  payment_method: "cod" | "upi"
+}
+
+// Get platform settings for calculating commissions and charges
+async function getPlatformSettings() {
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("*")
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .single()
+
+  if (error) {
+    console.error("Error fetching platform settings:", error)
+    // Default values if settings can't be fetched
+    return {
+      commission_percentage: 2,
+      commission_gst_rate: 18,
+      delivery_charge: 50,
+      delivery_gst_rate: 18,
+    }
+  }
+
+  return data
+}
+
+// Generate a unique order number
+function generateOrderNumber() {
+  const timestamp = new Date().getTime().toString().slice(-8)
+  const random = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0")
+  return `ORD${timestamp}${random}`
+}
 
 // Create a new order
-export async function createOrder(
-  retailerId: string,
-  wholesalerId: string,
-  items: Array<{ productId: string; quantity: number; unitPrice: number }>,
-  shippingAddress: string,
-  paymentMethod: string,
-): Promise<{ success: boolean; orderId?: string; error?: string }> {
+export async function createOrder(orderData: CreateOrderData): Promise<{ data: Order | null; error: any }> {
   try {
-    const client = createClient()
-
-    // Generate order ID
-    const orderId = uuidv4()
-    const orderNumber = `ORD-${Date.now().toString().slice(-6)}`
+    // Get platform settings for commission calculation
+    const settings = await getPlatformSettings()
 
     // Calculate total amount
-    const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+    const totalAmount = orderData.items.reduce((sum, item) => sum + item.total_price, 0)
 
-    // Create order
-    const { error: orderError } = await client.from("orders").insert({
-      id: orderId,
-      order_number: orderNumber,
-      retailer_id: retailerId,
-      wholesaler_id: wholesalerId,
-      total_amount: totalAmount,
-      status: "placed",
-      payment_method: paymentMethod,
-      payment_status: "pending",
-      shipping_address: shippingAddress,
-      created_at: new Date().toISOString(),
-    })
+    // Calculate commission and GST
+    const commission = (totalAmount * settings.commission_percentage) / 100
+    const commissionGst = (commission * settings.commission_gst_rate) / 100
+
+    // Calculate delivery charge and GST
+    const deliveryCharge = settings.delivery_charge
+    const deliveryChargeGst = (deliveryCharge * settings.delivery_gst_rate) / 100
+
+    // Calculate wholesaler payout
+    const wholesalerPayout = totalAmount - commission - commissionGst
+
+    // Generate order number
+    const orderNumber = generateOrderNumber()
+
+    // Create order in database
+    const { data: orderResult, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        order_number: orderNumber,
+        retailer_id: orderData.retailer_id,
+        wholesaler_id: orderData.wholesaler_id,
+        total_amount: totalAmount,
+        status: "placed",
+        payment_method: orderData.payment_method,
+        payment_status: "pending",
+        commission: commission,
+        commission_gst: commissionGst,
+        delivery_charge: deliveryCharge,
+        delivery_charge_gst: deliveryChargeGst,
+        wholesaler_payout: wholesalerPayout,
+      })
+      .select()
+      .single()
 
     if (orderError) {
-      throw orderError
+      return { data: null, error: orderError }
     }
 
     // Create order items
-    const orderItems = items.map((item) => ({
-      id: uuidv4(),
-      order_id: orderId,
-      product_id: item.productId,
+    const orderItems = orderData.items.map((item) => ({
+      order_id: orderResult.id,
+      product_id: item.product_id,
       quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.quantity * item.unitPrice,
-      created_at: new Date().toISOString(),
+      unit_price: item.unit_price,
+      total_price: item.total_price,
     }))
 
-    const { error: itemsError } = await client.from("order_items").insert(orderItems)
+    const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
 
     if (itemsError) {
-      throw itemsError
+      return { data: null, error: itemsError }
     }
 
-    // Create notifications
-    await createNotification({
-      user_id: retailerId,
-      title: "Order Placed",
-      message: `Your order #${orderNumber} has been placed successfully.`,
-      type: "order",
-      reference_id: orderId,
-    })
-
-    await createNotification({
-      user_id: wholesalerId,
-      title: "New Order Received",
-      message: `You have received a new order #${orderNumber}.`,
-      type: "order",
-      reference_id: orderId,
-    })
-
-    return { success: true, orderId }
+    return { data: orderResult, error: null }
   } catch (error) {
     console.error("Error creating order:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Failed to create order" }
-  }
-}
-
-// Get order by ID
-export async function getOrderById(orderId: string): Promise<{ data: Order | null; error?: string }> {
-  try {
-    const { data, error } = await supabase
-      .from("orders")
-      .select(`
-        *,
-        retailer:retailer_id(*),
-        wholesaler:wholesaler_id(*),
-        items:order_items(*)
-      `)
-      .eq("id", orderId)
-      .single()
-
-    if (error) {
-      throw error
-    }
-
-    return { data }
-  } catch (error) {
-    console.error("Error fetching order:", error)
-    return { data: null, error: error instanceof Error ? error.message : "Failed to fetch order" }
+    return { data: null, error }
   }
 }
 
 // Get orders by retailer ID
-export async function getOrdersByRetailerId(
-  retailerId: string,
-  limit = 10,
-  offset = 0,
-  status?: OrderStatus,
-): Promise<{ data: Order[]; count: number; error?: string }> {
+export async function getOrdersByRetailer(retailerId: string): Promise<{ data: Order[] | null; error: any }> {
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from("orders")
-      .select("*, items:order_items(*)", { count: "exact" })
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          total_price
+        ),
+        wholesaler:users!wholesaler_id(name, business_name)
+      `,
+      )
       .eq("retailer_id", retailerId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    const { data, count, error } = await query
 
     if (error) {
-      throw error
+      return { data: null, error }
     }
 
-    return { data: data || [], count: count || 0 }
+    // Format the data to match our interface
+    const formattedData = data.map((order) => ({
+      ...order,
+      wholesaler_name: order.wholesaler.business_name || order.wholesaler.name,
+    }))
+
+    return { data: formattedData, error: null }
   } catch (error) {
     console.error("Error fetching retailer orders:", error)
-    return { data: [], count: 0, error: error instanceof Error ? error.message : "Failed to fetch orders" }
+    return { data: null, error }
   }
 }
 
 // Get orders by wholesaler ID
-export async function getOrdersByWholesalerId(
-  wholesalerId: string,
-  limit = 10,
-  offset = 0,
-  status?: OrderStatus,
-): Promise<{ data: Order[]; count: number; error?: string }> {
+export async function getOrdersByWholesaler(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from("orders")
-      .select("*, items:order_items(*)", { count: "exact" })
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          total_price
+        ),
+        retailer:users!retailer_id(name, business_name)
+      `,
+      )
       .eq("wholesaler_id", wholesalerId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    const { data, count, error } = await query
 
     if (error) {
-      throw error
+      return { data: null, error }
     }
 
-    return { data: data || [], count: count || 0 }
+    // Format the data to match our interface
+    const formattedData = data.map((order) => ({
+      ...order,
+      retailer_name: order.retailer.business_name || order.retailer.name,
+    }))
+
+    return { data: formattedData, error: null }
   } catch (error) {
     console.error("Error fetching wholesaler orders:", error)
-    return { data: [], count: 0, error: error instanceof Error ? error.message : "Failed to fetch orders" }
+    return { data: null, error }
+  }
+}
+
+// Get order details by ID
+export async function getOrderById(orderId: string): Promise<{ data: Order | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          total_price,
+          product:products(id, name, description, image_url)
+        ),
+        retailer:users!retailer_id(id, name, business_name, phone_number),
+        wholesaler:users!wholesaler_id(id, name, business_name, phone_number)
+      `,
+      )
+      .eq("id", orderId)
+      .single()
+
+    if (error) {
+      return { data: null, error }
+    }
+
+    // Format the data to match our interface
+    const formattedData = {
+      ...data,
+      retailer_name: data.retailer.business_name || data.retailer.name,
+      wholesaler_name: data.wholesaler.business_name || data.wholesaler.name,
+    }
+
+    return { data: formattedData, error: null }
+  } catch (error) {
+    console.error("Error fetching order details:", error)
+    return { data: null, error }
   }
 }
 
 // Update order status
 export async function updateOrderStatus(
   orderId: string,
-  status: OrderStatus,
-  updatedBy: string,
-  role: string,
-  reason?: string,
-): Promise<{ success: boolean; error?: string }> {
+  status: "confirmed" | "rejected" | "dispatched" | "delivered",
+): Promise<{ success: boolean; error: any }> {
   try {
-    const client = createClient()
-
-    // Get current order
-    const { data: order, error: fetchError } = await client
+    const { error } = await supabase
       .from("orders")
-      .select("*, retailer:retailer_id(*), wholesaler:wholesaler_id(*)")
+      .update({ status, updated_at: new Date().toISOString() })
       .eq("id", orderId)
-      .single()
 
-    if (fetchError || !order) {
-      throw fetchError || new Error("Order not found")
+    if (error) {
+      return { success: false, error }
     }
 
-    // Update order status
-    const { error: updateError } = await client
-      .from("orders")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
+    // If status is "dispatched", create a delivery assignment
+    if (status === "dispatched") {
+      // Get order details to get delivery charge
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("delivery_charge, delivery_charge_gst")
+        .eq("id", orderId)
+        .single()
+
+      if (orderError) {
+        console.error("Error fetching order for delivery assignment:", orderError)
+        return { success: true, error: null } // Still return success for order update
+      }
+
+      // Create delivery assignment
+      const { error: assignmentError } = await createDeliveryAssignment({
+        order_id: orderId,
+        delivery_charge: order.delivery_charge,
+        delivery_charge_gst: order.delivery_charge_gst,
       })
-      .eq("id", orderId)
 
-    if (updateError) {
-      throw updateError
+      if (assignmentError) {
+        console.error("Error creating delivery assignment:", assignmentError)
+        return { success: true, error: null } // Still return success for order update
+      }
     }
 
-    // Add to status history
-    const { error: historyError } = await client.from("order_status_history").insert({
-      id: uuidv4(),
-      order_id: orderId,
-      status,
-      updated_by: updatedBy,
-      role,
-      reason,
-      created_at: new Date().toISOString(),
-    })
-
-    if (historyError) {
-      throw historyError
-    }
-
-    // Create notifications
-    let retailerMessage = ""
-    let wholesalerMessage = ""
-
-    switch (status) {
-      case "confirmed":
-        retailerMessage = `Your order #${order.order_number} has been confirmed.`
-        wholesalerMessage = `You have confirmed order #${order.order_number}.`
-        break
-      case "processing":
-        retailerMessage = `Your order #${order.order_number} is being processed.`
-        wholesalerMessage = `Order #${order.order_number} is now being processed.`
-        break
-      case "shipped":
-        retailerMessage = `Your order #${order.order_number} has been shipped.`
-        wholesalerMessage = `Order #${order.order_number} has been shipped.`
-        break
-      case "delivered":
-        retailerMessage = `Your order #${order.order_number} has been delivered.`
-        wholesalerMessage = `Order #${order.order_number} has been delivered.`
-        break
-      case "cancelled":
-        retailerMessage = `Your order #${order.order_number} has been cancelled.`
-        wholesalerMessage = `Order #${order.order_number} has been cancelled.`
-        break
-      default:
-        retailerMessage = `Your order #${order.order_number} status has been updated to ${status}.`
-        wholesalerMessage = `Order #${order.order_number} status has been updated to ${status}.`
-    }
-
-    await createNotification({
-      user_id: order.retailer_id,
-      title: "Order Status Updated",
-      message: retailerMessage,
-      type: "order",
-      reference_id: orderId,
-    })
-
-    await createNotification({
-      user_id: order.wholesaler_id,
-      title: "Order Status Updated",
-      message: wholesalerMessage,
-      type: "order",
-      reference_id: orderId,
-    })
-
-    return { success: true }
+    return { success: true, error: null }
   } catch (error) {
     console.error("Error updating order status:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Failed to update order status" }
+    return { success: false, error }
   }
 }
 
 // Update payment status
 export async function updatePaymentStatus(
   orderId: string,
-  status: PaymentStatus,
-): Promise<{ success: boolean; error?: string }> {
+  paymentStatus: "pending" | "completed",
+): Promise<{ success: boolean; error: any }> {
   try {
     const { error } = await supabase
       .from("orders")
-      .update({
-        payment_status: status,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ payment_status: paymentStatus, updated_at: new Date().toISOString() })
       .eq("id", orderId)
 
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
+    return { success: !error, error }
   } catch (error) {
     console.error("Error updating payment status:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Failed to update payment status" }
-  }
-}
-
-// Get order status history
-export async function getOrderStatusHistory(orderId: string): Promise<{ data: any[]; error?: string }> {
-  try {
-    const { data, error } = await supabase
-      .from("order_status_history")
-      .select("*")
-      .eq("order_id", orderId)
-      .order("created_at", { ascending: true })
-
-    if (error) {
-      throw error
-    }
-
-    return { data: data || [] }
-  } catch (error) {
-    console.error("Error fetching order status history:", error)
-    return { data: [], error: error instanceof Error ? error.message : "Failed to fetch order status history" }
-  }
-}
-
-// Get order items
-export async function getOrderItems(orderId: string): Promise<{ data: OrderItem[]; error?: string }> {
-  try {
-    const { data, error } = await supabase
-      .from("order_items")
-      .select(`
-        *,
-        product:product_id(*)
-      `)
-      .eq("order_id", orderId)
-
-    if (error) {
-      throw error
-    }
-
-    return { data: data || [] }
-  } catch (error) {
-    console.error("Error fetching order items:", error)
-    return { data: [], error: error instanceof Error ? error.message : "Failed to fetch order items" }
-  }
-}
-
-// Add the missing functions
-export async function cancelOrder(
-  orderId: string,
-  cancelledBy: string,
-  role: string,
-  reason: string,
-): Promise<{ success: boolean; error?: string }> {
-  return updateOrderStatus(orderId, "cancelled", cancelledBy, role, reason)
-}
-
-export const getOrdersByRetailer = getOrdersByRetailerId
-export const getRetailerOrders = getOrdersByRetailerId
-
-export const getOrdersByWholesaler = getOrdersByWholesalerId
-export const getWholesalerOrders = getOrdersByWholesalerId
-
-export async function getOrderStatistics(
-  userId: string,
-  role: "retailer" | "wholesaler",
-): Promise<{ data: any; error?: string }> {
-  try {
-    const roleField = role === "retailer" ? "retailer_id" : "wholesaler_id"
-
-    // Get total orders count
-    const { count: totalOrders, error: countError } = await supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-      .eq(roleField, userId)
-
-    if (countError) {
-      throw countError
-    }
-
-    // Get orders by status
-    const statuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
-    const ordersByStatus: Record<string, number> = {}
-
-    for (const status of statuses) {
-      const { count, error } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", status)
-
-      if (error) {
-        throw error
-      }
-
-      ordersByStatus[status] = count || 0
-    }
-
-    // Get total amount for completed orders
-    const { data: completedOrders, error: completedError } = await supabase
-      .from("orders")
-      .select("total_amount")
-      .eq(roleField, userId)
-      .eq("status", "delivered")
-
-    if (completedError) {
-      throw completedError
-    }
-
-    const totalAmount = completedOrders.reduce((sum, order) => sum + order.total_amount, 0)
-
-    // Get recent orders
-    const { data: recentOrders, error: recentError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq(roleField, userId)
-      .order("created_at", { ascending: false })
-      .limit(5)
-
-    if (recentError) {
-      throw recentError
-    }
-
-    return {
-      data: {
-        totalOrders,
-        ordersByStatus,
-        totalAmount,
-        recentOrders,
-      },
-    }
-  } catch (error) {
-    console.error("Error getting order statistics:", error)
-    return {
-      data: null,
-      error: error instanceof Error ? error.message : "Failed to get order statistics",
-    }
-  }
-}
-
-export async function generateOrderInvoice(orderId: string): Promise<{ data: any; error?: string }> {
-  try {
-    const { data: order, error: orderError } = await getOrderById(orderId)
-
-    if (orderError || !order) {
-      throw orderError || new Error("Order not found")
-    }
-
-    const { data: items, error: itemsError } = await getOrderItems(orderId)
-
-    if (itemsError) {
-      throw itemsError
-    }
-
-    // Generate invoice data
-    const invoiceData = {
-      invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
-      orderNumber: order.order_number,
-      date: new Date().toISOString(),
-      retailer: order.retailer,
-      wholesaler: order.wholesaler,
-      items: items,
-      subtotal: items.reduce((sum, item) => sum + item.total_price, 0),
-      tax: order.tax || 0,
-      shippingCost: order.shipping_cost || 0,
-      totalAmount: order.total_amount,
-      paymentMethod: order.payment_method,
-      paymentStatus: order.payment_status,
-    }
-
-    return { data: invoiceData }
-  } catch (error) {
-    console.error("Error generating invoice:", error)
-    return {
-      data: null,
-      error: error instanceof Error ? error.message : "Failed to generate invoice",
-    }
+    return { success: false, error }
   }
 }

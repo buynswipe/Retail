@@ -8,13 +8,18 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['localhost', 'placeholder.com', 'via.placeholder.com'],
+    domains: ['localhost', 'placeholder.com', 'via.placeholder.com', 'supabase.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
     unoptimized: true,
   },
   experimental: {
-    // Fix: serverActions should be an object, not a boolean
-    serverComponentsExternalPackages: [],
+    serverActions: true,
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

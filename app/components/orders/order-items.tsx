@@ -1,71 +1,53 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { OrderItem } from "@/lib/types"
+"use client"
 
-interface OrderItemsProps {
-  items: OrderItem[]
-  subtotal: number
-  tax: number
-  shippingCost: number
-  totalAmount: number
-}
+import { formatCurrency } from "@/lib/utils"
+import { useTranslation } from "@/lib/use-safe-translation"
+import Image from "next/image"
+import { Package } from "lucide-react"
 
-export function OrderItems({ items, subtotal, tax, shippingCost, totalAmount }: OrderItemsProps) {
+export function OrderItems({ items }: { items: any[] }) {
+  const { t } = useTranslation()
+
+  if (!items || items.length === 0) {
+    return <div className="text-gray-500">{t("No items in this order")}</div>
+  }
+
   return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Order Items</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border p-2 text-left">Product</th>
-                <th className="border p-2 text-left">SKU</th>
-                <th className="border p-2 text-right">Price</th>
-                <th className="border p-2 text-right">Quantity</th>
-                <th className="border p-2 text-right">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.productId} className="border-b">
-                  <td className="border p-2">{item.productName}</td>
-                  <td className="border p-2">{item.sku}</td>
-                  <td className="border p-2 text-right">₹{item.price.toFixed(2)}</td>
-                  <td className="border p-2 text-right">{item.quantity}</td>
-                  <td className="border p-2 text-right">₹{(item.price * item.quantity).toFixed(2)}</td>
-                </tr>
-              ))}
-              <tr className="bg-gray-50 font-medium">
-                <td colSpan={4} className="border p-2 text-right">
-                  Subtotal:
-                </td>
-                <td className="border p-2 text-right">₹{subtotal.toFixed(2)}</td>
-              </tr>
-              <tr className="bg-gray-50">
-                <td colSpan={4} className="border p-2 text-right">
-                  Tax:
-                </td>
-                <td className="border p-2 text-right">₹{tax.toFixed(2)}</td>
-              </tr>
-              <tr className="bg-gray-50">
-                <td colSpan={4} className="border p-2 text-right">
-                  Shipping:
-                </td>
-                <td className="border p-2 text-right">₹{shippingCost.toFixed(2)}</td>
-              </tr>
-              <tr className="bg-gray-100 font-bold">
-                <td colSpan={4} className="border p-2 text-right">
-                  Total:
-                </td>
-                <td className="border p-2 text-right">₹{totalAmount.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
+    <div className="space-y-4">
+      {items.map((item, index) => (
+        <div key={item.id || index} className="flex items-center gap-4 py-3 border-b last:border-b-0">
+          <div className="h-16 w-16 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+            {item.product?.image_url ? (
+              <Image
+                src={item.product.image_url || "/placeholder.svg"}
+                alt={item.product.name}
+                width={64}
+                height={64}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center">
+                <Package className="h-6 w-6 text-gray-400" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-grow">
+            <h4 className="font-medium">{item.product?.name}</h4>
+            <div className="text-sm text-gray-500">
+              {item.variant_name && <span>{item.variant_name} • </span>}
+              <span>
+                {formatCurrency(item.price)} × {item.quantity}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="font-medium">{formatCurrency(item.price * item.quantity)}</div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   )
 }
 

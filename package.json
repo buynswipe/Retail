@@ -60,13 +60,14 @@
     "zod": "^3.24.1",
     "jspdf": "latest",
     "i18next": "latest",
-    "country-flag-icons": "latest",
     "@supabase/supabase-js": "latest",
+    "country-flag-icons": "latest",
     "papaparse": "latest",
     "jspdf-autotable": "latest",
     "crypto": "latest",
     "uuid": "latest",
-    "react-i18next": "latest"
+    "react-i18next": "latest",
+    "@supabase/auth-helpers-nextjs": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

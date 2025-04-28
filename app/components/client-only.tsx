@@ -1,17 +1,16 @@
 "use client"
+import { useEffect, useState } from "react"
+import type React from "react"
 
-import { useEffect, useState, type ReactNode } from "react"
-import SSRFallback from "./ssr-fallback"
-
-export default function ClientOnly({ children }: { children: ReactNode }) {
-  const [isMounted, setIsMounted] = useState(false)
+export default function ClientOnly({ children }: { children: React.ReactNode }) {
+  const [hasMounted, setHasMounted] = useState(false)
 
   useEffect(() => {
-    setIsMounted(true)
+    setHasMounted(true)
   }, [])
 
-  if (!isMounted) {
-    return <SSRFallback />
+  if (!hasMounted) {
+    return <div className="min-h-screen bg-gray-50"></div>
   }
 
   return <>{children}</>

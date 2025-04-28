@@ -1,36 +1,30 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+export function middleware(request: NextRequest) {
+  // Get the pathname
+  const path = request.nextUrl.pathname
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Define public paths that don't require authentication
+  const isPublicPath = path === "/" || path === "/login" || path === "/signup" || path.startsWith("/onboarding/")
 
-  // Check auth condition
-  if (!session) {
-    // Auth condition not met, redirect to login page
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = "/login"
-    redirectUrl.searchParams.set("redirectedFrom", req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  // Check if user is logged in
+  const hasAuthCookie = request.cookies.has("currentUser")
+
+  // If trying to access a protected route without being logged in
+  if (!isPublicPath && !hasAuthCookie) {
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  return res
+  // If trying to access login/signup while logged in
+  if ((path === "/login" || path === "/signup") && hasAuthCookie) {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
+
+  return NextResponse.next()
 }
 
+// See "Matching Paths" below to learn more
 export const config = {
-  matcher: [
-    "/retailer/:path*",
-    "/wholesaler/:path*",
-    "/admin/:path*",
-    "/delivery/:path*",
-    "/profile/:path*",
-    "/notifications/:path*",
-    "/notification-preferences/:path*",
-    "/chat/:path*",
-  ],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
 }

@@ -20,6 +20,11 @@ const nextConfig = {
   experimental: {
     serverActions: true,
   },
+  // Add these optimizations
+  swcMinify: true,
+  poweredByHeader: false,
+  compress: true,
+  productionBrowserSourceMaps: false,
 }
 
 export default nextConfig

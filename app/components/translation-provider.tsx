@@ -1,129 +1,76 @@
 "use client"
+import type React from "react"
+import { createContext, useContext, useState, useEffect } from "react"
 
-import { createContext, useContext, type ReactNode, useState, useEffect } from "react"
-
-type Language = "en" | "hi"
-
+// Define the translation context
 interface TranslationContextType {
-  language: Language
   t: (key: string) => string
-  setLanguage: (lang: Language) => void
+  changeLanguage: (lang: string) => void
+  currentLanguage: string
 }
 
-const translations = {
+const TranslationContext = createContext<TranslationContextType>({
+  t: (key: string) => key,
+  changeLanguage: () => {},
+  currentLanguage: "en",
+})
+
+// Simple translations
+const translations: Record<string, Record<string, string>> = {
   en: {
-    // Landing page
-    "hero.headline": "Power Your FMCG Business",
-    "hero.subheadline": "Seamless ordering and delivery for retailers, wholesalers, and delivery partners",
-    "cta.join": "Join Now",
-    "cta.download": "Download App",
-    "benefits.retailer.title": "Retailers",
-    "benefits.retailer.description": "Order, track, save time",
-    "benefits.wholesaler.title": "Wholesalers",
-    "benefits.wholesaler.description": "Grow sales, easy payments",
-    "benefits.delivery.title": "Delivery Partners",
-    "benefits.delivery.description": "Earn per delivery",
-    "how.title": "How It Works",
-    "how.step1": "Join",
-    "how.step2": "Order",
-    "how.step3": "Deliver",
-    "how.step4": "Track",
-    "learn.more": "Learn More",
-
-    // Auth
-    "login.title": "Log In",
-    "signup.title": "Sign Up",
-    phone: "Phone Number",
-    otp: "OTP",
-    "send.otp": "Send OTP",
-    verify: "Verify",
-    continue: "Continue",
-
-    // Navigation
-    "nav.home": "Home",
-    "nav.orders": "Orders",
-    "nav.chat": "Chat",
-    "nav.tax": "Tax",
-
-    // Footer
-    "footer.privacy": "Privacy Policy",
-    "footer.terms": "Terms of Service",
-    "footer.contact": "Contact Us",
+    Welcome: "Welcome",
+    Login: "Login",
+    Signup: "Signup",
+    Dashboard: "Dashboard",
+    Orders: "Orders",
+    Products: "Products",
+    Payments: "Payments",
+    Settings: "Settings",
+    Logout: "Logout",
+    "Payment Failed": "Payment Failed",
+    "Try Again": "Try Again",
+    "View Orders": "View Orders",
+    "There was an issue processing your payment. Please try again.":
+      "There was an issue processing your payment. Please try again.",
   },
   hi: {
-    // Landing page
-    "hero.headline": "अपने FMCG व्यवसाय को सशक्त करें",
-    "hero.subheadline": "रिटेलर, थोक विक्रेता, और डिलीवरी पार्टनर के लिए आसान ऑर्डरिंग और डिलीवरी",
-    "cta.join": "अभी जुड़ें",
-    "cta.download": "ऐप डाउनलोड करें",
-    "benefits.retailer.title": "रिटेलर्स",
-    "benefits.retailer.description": "ऑर्डर करें, ट्रैक करें, समय बचाएं",
-    "benefits.wholesaler.title": "थोक विक्रेता",
-    "benefits.wholesaler.description": "बिक्री बढ़ाएं, आसान भुगतान",
-    "benefits.delivery.title": "डिलीवरी पार्टनर",
-    "benefits.delivery.description": "प्रति डिलीवरी कमाई",
-    "how.title": "यह कैसे काम करता है",
-    "how.step1": "जुड़ें",
-    "how.step2": "ऑर्डर करें",
-    "how.step3": "डिलीवर करें",
-    "how.step4": "ट्रैक करें",
-    "learn.more": "और जानें",
-
-    // Auth
-    "login.title": "लॉग इन",
-    "signup.title": "साइन अप",
-    phone: "फोन नंबर",
-    otp: "ओटीपी",
-    "send.otp": "ओटीपी भेजें",
-    verify: "सत्यापित करें",
-    continue: "जारी रखें",
-
-    // Navigation
-    "nav.home": "होम",
-    "nav.orders": "ऑर्डर",
-    "nav.chat": "चैट",
-    "nav.tax": "टैक्स",
-
-    // Footer
-    "footer.privacy": "गोपनीयता नीति",
-    "footer.terms": "सेवा की शर्तें",
-    "footer.contact": "संपर्क करें",
+    Welcome: "स्वागत है",
+    Login: "लॉगिन",
+    Signup: "साइन अप",
+    Dashboard: "डैशबोर्ड",
+    Orders: "आदेश",
+    Products: "उत्पाद",
+    Payments: "भुगतान",
+    Settings: "सेटिंग्स",
+    Logout: "लॉगआउट",
+    "Payment Failed": "भुगतान विफल",
+    "Try Again": "पुनः प्रयास करें",
+    "View Orders": "आदेश देखें",
+    "There was an issue processing your payment. Please try again.":
+      "आपके भुगतान को संसाधित करने में एक समस्या थी। कृपया पुन: प्रयास करें।",
   },
 }
 
-const TranslationContext = createContext<TranslationContextType | undefined>(undefined)
-
-export function TranslationProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>("en")
+export function TranslationProvider({ children }: { children: React.ReactNode }) {
+  const [currentLanguage, setCurrentLanguage] = useState("en")
 
   useEffect(() => {
-    // Get language preference from localStorage if available
-    const savedLanguage = localStorage.getItem("language") as Language
-    if (savedLanguage && (savedLanguage === "en" || savedLanguage === "hi")) {
-      setLanguage(savedLanguage)
-    }
+    const savedLanguage = localStorage.getItem("language") || "en"
+    setCurrentLanguage(savedLanguage)
   }, [])
 
-  const t = (key: string): string => {
-    return translations[language][key as keyof (typeof translations)[typeof language]] || key
-  }
-
-  const changeLanguage = (lang: Language) => {
-    setLanguage(lang)
+  const changeLanguage = (lang: string) => {
+    setCurrentLanguage(lang)
     localStorage.setItem("language", lang)
   }
 
+  const t = (key: string) => {
+    return translations[currentLanguage]?.[key] || key
+  }
+
   return (
-    <TranslationContext.Provider value={{ language, t, setLanguage: changeLanguage }}>
-      {children}
-    </TranslationContext.Provider>
+    <TranslationContext.Provider value={{ t, changeLanguage, currentLanguage }}>{children}</TranslationContext.Provider>
   )
 }
 
-export function useTranslation() {
-  const context = useContext(TranslationContext)
-  if (context === undefined) {
-    throw new Error("useTranslation must be used within a TranslationProvider")
-  }
-  return context
-}
+export const useTranslation = () => useContext(TranslationContext)

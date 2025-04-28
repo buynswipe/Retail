@@ -1,5 +1,4 @@
 import { supabase } from "./supabase-client"
-import { updatePaymentStatus } from "./order-service"
 import { createNotification } from "./notification-service"
 
 // Process payment
@@ -320,4 +319,26 @@ export async function markCodPaymentCollected(
 // Get payments by user ID (alias for getPaymentsByUser for compatibility)
 export async function getPaymentsByUserId(userId: string, role: string): Promise<{ data: any[] | null; error: any }> {
   return await getPaymentsByUser(userId, role)
+}
+
+// Update payment status for an order
+export async function updatePaymentStatus(orderId: string, status: string): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        payment_status: status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+
+    if (error) {
+      throw error
+    }
+
+    return { success: true, error: null }
+  } catch (error) {
+    console.error("Error updating payment status:", error)
+    return { success: false, error }
+  }
 }

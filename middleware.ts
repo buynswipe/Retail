@@ -1,40 +1,31 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+// This function can be marked `async` if using `await` inside
+export function middleware(request: NextRequest) {
+  // Get the pathname
+  const path = request.nextUrl.pathname
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Define public paths that don't require authentication
+  const isPublicPath = path === "/" || path === "/login" || path === "/signup" || path.startsWith("/onboarding/")
 
-  // Check if the user is authenticated for protected routes
-  const isProtectedRoute =
-    req.nextUrl.pathname.startsWith("/admin") ||
-    req.nextUrl.pathname.startsWith("/retailer") ||
-    req.nextUrl.pathname.startsWith("/wholesaler") ||
-    req.nextUrl.pathname.startsWith("/delivery")
+  // Check if user is logged in
+  const hasAuthCookie = request.cookies.has("currentUser")
 
-  if (isProtectedRoute && !session) {
-    const redirectUrl = new URL("/login", req.url)
-    redirectUrl.searchParams.set("redirectTo", req.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  // If trying to access a protected route without being logged in
+  if (!isPublicPath && !hasAuthCookie) {
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  return res
+  // If trying to access login/signup while logged in
+  if ((path === "/login" || path === "/signup") && hasAuthCookie) {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
+
+  return NextResponse.next()
 }
 
+// See "Matching Paths" below to learn more
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)",
-  ],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
 }

@@ -1,31 +1,30 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../components/translation-provider"
 import Navbar from "../components/navbar"
-import { Bell, ArrowLeft, Save } from "lucide-react"
+import { ArrowLeft, Info } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
-import { getNotificationPreferences, updateNotificationPreferences } from "@/lib/notification-service"
+import {
+  getNotificationPreferences,
+  updateNotificationPreference,
+  createDefaultNotificationPreferences,
+  type NotificationPreference,
+} from "@/lib/notification-service"
 import Link from "next/link"
+import { Separator } from "@/components/ui/separator"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 function NotificationPreferencesContent() {
   const { t } = useTranslation()
   const { user } = useAuth()
-  const [preferences, setPreferences] = useState({
-    order_updates: true,
-    payment_updates: true,
-    delivery_updates: true,
-    chat_messages: true,
-    promotional: false,
-    email_notifications: true,
-    push_notifications: true,
-  })
+  const [preferences, setPreferences] = useState<NotificationPreference[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -41,45 +40,64 @@ function NotificationPreferencesContent() {
     setIsLoading(true)
     try {
       const { data, error } = await getNotificationPreferences(user.id)
+
       if (error) {
         console.error("Error loading notification preferences:", error)
-      } else if (data) {
-        setPreferences({
-          order_updates: data.order_updates ?? true,
-          payment_updates: data.payment_updates ?? true,
-          delivery_updates: data.delivery_updates ?? true,
-          chat_messages: data.chat_messages ?? true,
-          promotional: data.promotional ?? false,
-          email_notifications: data.email_notifications ?? true,
-          push_notifications: data.push_notifications ?? true,
-        })
+        return
+      }
+
+      if (data && data.length > 0) {
+        setPreferences(data)
+      } else {
+        // Create default preferences if none exist
+        await createDefaultNotificationPreferences(user.id)
+        const { data: newData } = await getNotificationPreferences(user.id)
+        if (newData) {
+          setPreferences(newData)
+        }
       }
     } catch (error) {
-      console.error("Error loading notification preferences:", error)
+      console.error("Error loading preferences:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleSavePreferences = async () => {
-    if (!user) return
-
+  const handleTogglePreference = async (
+    preferenceId: string,
+    field: "email_enabled" | "push_enabled" | "in_app_enabled",
+    value: boolean,
+  ) => {
     setIsSaving(true)
     try {
-      const { success, error } = await updateNotificationPreferences(user.id, preferences)
-      if (!success) {
-        throw error
+      const { success, error } = await updateNotificationPreference(preferenceId, {
+        [field]: value,
+      })
+
+      if (error) {
+        console.error("Error updating preference:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update notification preference. Please try again.",
+          variant: "destructive",
+        })
+        return
       }
 
-      toast({
-        title: "Success",
-        description: "Notification preferences saved successfully.",
-      })
+      if (success) {
+        // Update local state
+        setPreferences((prev) => prev.map((pref) => (pref.id === preferenceId ? { ...pref, [field]: value } : pref)))
+
+        toast({
+          title: "Success",
+          description: "Notification preference updated successfully.",
+        })
+      }
     } catch (error) {
-      console.error("Error saving notification preferences:", error)
+      console.error("Error updating preference:", error)
       toast({
         title: "Error",
-        description: "Failed to save notification preferences. Please try again.",
+        description: "Failed to update notification preference. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -87,19 +105,38 @@ function NotificationPreferencesContent() {
     }
   }
 
-  const handleToggle = (key: string) => {
-    setPreferences((prev) => ({
-      ...prev,
-      [key]: !prev[key as keyof typeof prev],
-    }))
+  const getNotificationTypeLabel = (type: string): string => {
+    switch (type) {
+      case "order":
+        return "Order Updates"
+      case "payment":
+        return "Payment Updates"
+      case "chat":
+        return "Chat Messages"
+      case "delivery":
+        return "Delivery Updates"
+      case "system":
+        return "System Notifications"
+      default:
+        return type
+    }
   }
 
-  const getDashboardLink = () => {
-    if (user?.role === "retailer") return "/retailer/dashboard"
-    if (user?.role === "wholesaler") return "/wholesaler/dashboard"
-    if (user?.role === "delivery") return "/delivery/dashboard"
-    if (user?.role === "admin") return "/admin/dashboard"
-    return "/"
+  const getNotificationTypeDescription = (type: string): string => {
+    switch (type) {
+      case "order":
+        return "Notifications about order status changes, confirmations, and rejections."
+      case "payment":
+        return "Notifications about payment status, confirmations, and failures."
+      case "chat":
+        return "Notifications about new messages from other users."
+      case "delivery":
+        return "Notifications about delivery status updates and assignments."
+      case "system":
+        return "Important system announcements and updates."
+      default:
+        return ""
+    }
   }
 
   return (
@@ -107,152 +144,135 @@ function NotificationPreferencesContent() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Notification Preferences</h1>
         <Button asChild variant="outline">
-          <Link href={getDashboardLink()}>
+          <Link href="/notifications">
             <ArrowLeft className="mr-2 h-5 w-5" />
-            Back to Dashboard
+            Back to Notifications
           </Link>
         </Button>
       </div>
 
-      <Card className="mb-8">
+      <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Bell className="mr-2 h-5 w-5" />
-            Notification Settings
-          </CardTitle>
-          <CardDescription>
-            Customize which notifications you want to receive and how you want to receive them.
-          </CardDescription>
+          <CardTitle>Manage Your Notification Settings</CardTitle>
+          <CardDescription>Choose how and when you want to receive notifications from Retail Bandhu.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center h-40">
+            <div className="flex justify-center py-8">
               <p className="text-gray-500">Loading preferences...</p>
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Notification Types</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="order-updates" className="font-medium">
-                        Order Updates
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications about your order status changes</p>
-                    </div>
-                    <Switch
-                      id="order-updates"
-                      checked={preferences.order_updates}
-                      onCheckedChange={() => handleToggle("order_updates")}
-                    />
+              <TooltipProvider>
+                <div className="grid grid-cols-4 gap-4 mb-2 px-4">
+                  <div></div>
+                  <div className="text-center text-sm font-medium">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-center">
+                          Email <Info className="ml-1 h-3 w-3" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Receive notifications via email</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="payment-updates" className="font-medium">
-                        Payment Updates
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications about payment status changes</p>
-                    </div>
-                    <Switch
-                      id="payment-updates"
-                      checked={preferences.payment_updates}
-                      onCheckedChange={() => handleToggle("payment_updates")}
-                    />
+                  <div className="text-center text-sm font-medium">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-center">
+                          Push <Info className="ml-1 h-3 w-3" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Receive push notifications on your device</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="delivery-updates" className="font-medium">
-                        Delivery Updates
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications about delivery status changes</p>
-                    </div>
-                    <Switch
-                      id="delivery-updates"
-                      checked={preferences.delivery_updates}
-                      onCheckedChange={() => handleToggle("delivery_updates")}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="chat-messages" className="font-medium">
-                        Chat Messages
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications about new chat messages</p>
-                    </div>
-                    <Switch
-                      id="chat-messages"
-                      checked={preferences.chat_messages}
-                      onCheckedChange={() => handleToggle("chat_messages")}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="promotional" className="font-medium">
-                        Promotional Notifications
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive promotional offers and updates</p>
-                    </div>
-                    <Switch
-                      id="promotional"
-                      checked={preferences.promotional}
-                      onCheckedChange={() => handleToggle("promotional")}
-                    />
+                  <div className="text-center text-sm font-medium">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-center">
+                          In-App <Info className="ml-1 h-3 w-3" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Receive notifications within the application</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
-              </div>
+                <Separator />
 
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Notification Channels</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="email-notifications" className="font-medium">
-                        Email Notifications
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications via email</p>
+                {preferences.map((preference) => (
+                  <div key={preference.id}>
+                    <div className="grid grid-cols-4 gap-4 items-center py-4 px-4">
+                      <div>
+                        <Label className="text-base font-medium">{getNotificationTypeLabel(preference.type)}</Label>
+                        <p className="text-sm text-gray-500">{getNotificationTypeDescription(preference.type)}</p>
+                      </div>
+                      <div className="flex justify-center">
+                        <Switch
+                          checked={preference.email_enabled}
+                          onCheckedChange={(checked) => handleTogglePreference(preference.id, "email_enabled", checked)}
+                          disabled={isSaving}
+                        />
+                      </div>
+                      <div className="flex justify-center">
+                        <Switch
+                          checked={preference.push_enabled}
+                          onCheckedChange={(checked) => handleTogglePreference(preference.id, "push_enabled", checked)}
+                          disabled={isSaving}
+                        />
+                      </div>
+                      <div className="flex justify-center">
+                        <Switch
+                          checked={preference.in_app_enabled}
+                          onCheckedChange={(checked) =>
+                            handleTogglePreference(preference.id, "in_app_enabled", checked)
+                          }
+                          disabled={isSaving}
+                        />
+                      </div>
                     </div>
-                    <Switch
-                      id="email-notifications"
-                      checked={preferences.email_notifications}
-                      onCheckedChange={() => handleToggle("email_notifications")}
-                    />
+                    <Separator />
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="push-notifications" className="font-medium">
-                        Push Notifications
-                      </Label>
-                      <p className="text-sm text-gray-500">Receive notifications in your browser or mobile app</p>
-                    </div>
-                    <Switch
-                      id="push-notifications"
-                      checked={preferences.push_notifications}
-                      onCheckedChange={() => handleToggle("push_notifications")}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t">
-                <Button onClick={handleSavePreferences} disabled={isSaving} className="bg-blue-500 hover:bg-blue-600">
-                  {isSaving ? (
-                    "Saving..."
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save Preferences
-                    </>
-                  )}
-                </Button>
-              </div>
+                ))}
+              </TooltipProvider>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>About Notifications</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium">Email Notifications</h3>
+              <p className="text-sm text-gray-500">
+                Email notifications are sent to your registered email address. They are useful for important updates
+                that you might want to reference later.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-lg font-medium">Push Notifications</h3>
+              <p className="text-sm text-gray-500">
+                Push notifications appear on your device even when you're not using the app. They are useful for
+                time-sensitive updates.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-lg font-medium">In-App Notifications</h3>
+              <p className="text-sm text-gray-500">
+                In-app notifications appear in the notification bell within the application. They are useful for updates
+                while you're actively using the app.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

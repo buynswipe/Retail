@@ -1,63 +1,87 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AlertTriangle } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
-export default function EnvSetup() {
-  const [missingVars, setMissingVars] = useState<string[]>([])
-  const [isClient, setIsClient] = useState(false)
+export default function EnvSetupDialog() {
+  const [open, setOpen] = useState(false)
+  const [supabaseUrl, setSupabaseUrl] = useState("")
+  const [supabaseKey, setSupabaseKey] = useState("")
 
   useEffect(() => {
-    setIsClient(true)
+    // Check if environment variables are missing
+    const isMissingEnvVars =
+      !window.localStorage.getItem("NEXT_PUBLIC_SUPABASE_URL") ||
+      !window.localStorage.getItem("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
-    // Check if environment variables are set
-    const requiredVars = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]
-
-    const missing = requiredVars.filter((varName) => {
-      const value = process.env[varName]
-      return !value || value.trim() === ""
-    })
-
-    if (missing.length > 0) {
-      console.error(`Missing environment variables: ${missing.join(", ")}`)
-      setMissingVars(missing)
+    // Only show the dialog if environment variables are missing
+    if (isMissingEnvVars) {
+      setOpen(true)
     }
   }, [])
 
-  // Only show the error on client-side to avoid hydration issues
-  if (!isClient || missingVars.length === 0) {
-    return null
+  const handleSave = () => {
+    // Store values in localStorage for development purposes
+    if (supabaseUrl) {
+      window.localStorage.setItem("NEXT_PUBLIC_SUPABASE_URL", supabaseUrl)
+    }
+    if (supabaseKey) {
+      window.localStorage.setItem("NEXT_PUBLIC_SUPABASE_ANON_KEY", supabaseKey)
+    }
+
+    setOpen(false)
+
+    // Reload the page to apply the new environment variables
+    window.location.reload()
+  }
+
+  const handleSkip = () => {
+    setOpen(false)
   }
 
   return (
-    <div className="fixed inset-0 bg-red-500 bg-opacity-90 z-50 flex items-center justify-center text-white p-4">
-      <div className="max-w-md text-center bg-white text-red-600 p-6 rounded-lg shadow-lg">
-        <div className="flex justify-center mb-4">
-          <AlertTriangle size={48} />
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Setup Environment Variables</DialogTitle>
+          <DialogDescription>
+            For full functionality, please provide your Supabase credentials. You can skip this step to use mock data.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="supabaseUrl">Supabase URL</Label>
+            <Input
+              id="supabaseUrl"
+              value={supabaseUrl}
+              onChange={(e) => setSupabaseUrl(e.target.value)}
+              placeholder="https://your-project.supabase.co"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="supabaseKey">Supabase Anon Key</Label>
+            <Input
+              id="supabaseKey"
+              value={supabaseKey}
+              onChange={(e) => setSupabaseKey(e.target.value)}
+              placeholder="your-anon-key"
+              type="password"
+            />
+          </div>
         </div>
-        <h1 className="text-2xl font-bold mb-4">Environment Setup Required</h1>
-        <p className="mb-4">The following environment variables are missing:</p>
-        <ul className="bg-red-50 p-4 rounded text-left mb-4 overflow-auto">
-          {missingVars.map((varName) => (
-            <li key={varName} className="font-mono">
-              {varName}
-            </li>
-          ))}
-        </ul>
-        <p className="mb-4">Please add these variables to your Vercel project settings or .env.local file.</p>
-        <div className="mt-4 p-4 bg-blue-50 text-blue-700 rounded-md">
-          <h2 className="font-bold">How to fix this:</h2>
-          <ol className="list-decimal pl-5 mt-2 text-left">
-            <li>Go to your Vercel project settings</li>
-            <li>Navigate to the Environment Variables section</li>
-            <li>Add each of the missing variables listed above</li>
-            <li>Redeploy your application</li>
-          </ol>
+
+        <div className="flex justify-between">
+          <Button variant="outline" onClick={handleSkip}>
+            Skip (Use Mock Data)
+          </Button>
+          <Button onClick={handleSave}>Save and Continue</Button>
         </div>
-        <p className="text-sm text-gray-600 mt-4">
-          After adding the variables, redeploy your application or restart your development server.
-        </p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

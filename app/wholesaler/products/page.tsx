@@ -1,25 +1,11 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
+import { Plus, Search, Edit, Trash2, Tag, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { TranslationProvider, useTranslation } from "../../components/translation-provider"
-import Navbar from "../../components/navbar"
-import { Plus, Edit, Trash2, ImageIcon, Package, Search, X } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
-import {
-  getProductsByWholesaler,
-  createProduct,
-  updateProduct,
-  deleteProduct,
-  uploadProductImage,
-} from "@/lib/product-service"
-import type { Product } from "@/lib/product-service"
+import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -28,495 +14,788 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
-import { Toaster } from "@/components/ui/toaster"
-import { Switch } from "@/components/ui/switch"
+import { getProducts, createProduct, updateProduct, deleteProduct } from "@/lib/product-service"
+import { getCategories } from "@/lib/category-service"
+import { useTranslation } from "@/app/components/translation-provider"
 
-function ProductsContent() {
+export default function ProductsPage() {
   const { t } = useTranslation()
-  const { user } = useAuth()
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const router = useRouter()
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [currentProduct, setCurrentProduct] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
-    stock_quantity: "",
+    category_id: "",
     image_url: "",
+    sku: "",
     is_active: true,
+    min_order_quantity: "1",
+    unit: "piece",
+    tax_rate: "18",
+    has_variants: false,
   })
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user) {
-      loadProducts()
-    }
-  }, [user])
+    fetchProducts()
+    fetchCategories()
+  }, [])
 
-  const loadProducts = async () => {
-    if (!user) return
-
+  const fetchProducts = async () => {
     setIsLoading(true)
     try {
-      const { data, error } = await getProductsByWholesaler(user.id)
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to load products. Please try again.",
-          variant: "destructive",
-        })
-      } else if (data) {
-        setProducts(data)
-      }
+      const data = await getProducts()
+      setProducts(data)
     } catch (error) {
-      console.error("Error loading products:", error)
+      console.error("Error fetching products:", error)
+      toast({
+        title: t("Error"),
+        description: t("Failed to load products. Please try again."),
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleAddProduct = () => {
-    setSelectedProduct(null)
-    setFormData({
-      name: "",
-      description: "",
-      price: "",
-      stock_quantity: "",
-      image_url: "",
-      is_active: true,
-    })
-    setImageFile(null)
-    setImagePreview(null)
-    setIsDialogOpen(true)
-  }
-
-  const handleEditProduct = (product: Product) => {
-    setSelectedProduct(product)
-    setFormData({
-      name: product.name,
-      description: product.description || "",
-      price: product.price.toString(),
-      stock_quantity: product.stock_quantity.toString(),
-      image_url: product.image_url || "",
-      is_active: product.is_active,
-    })
-    setImageFile(null)
-    setImagePreview(product.image_url || null)
-    setIsDialogOpen(true)
-  }
-
-  const handleDeleteProduct = (product: Product) => {
-    setSelectedProduct(product)
-    setIsDeleteDialogOpen(true)
-  }
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
+  const fetchCategories = async () => {
+    try {
+      const data = await getCategories()
+      setCategories(data)
+    } catch (error) {
+      console.error("Error fetching categories:", error)
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target
+    setFormData({
+      ...formData,
+      [name]: type === "checkbox" ? checked : value,
+    })
+  }
+
+  const handleSelectChange = (name, value) => {
     setFormData({
       ...formData,
       [name]: value,
     })
   }
 
-  const handleSwitchChange = (checked: boolean) => {
+  const resetForm = () => {
     setFormData({
-      ...formData,
-      is_active: checked,
+      name: "",
+      description: "",
+      price: "",
+      category_id: "",
+      image_url: "",
+      sku: "",
+      is_active: true,
+      min_order_quantity: "1",
+      unit: "piece",
+      tax_rate: "18",
+      has_variants: false,
     })
   }
 
-  const handleSubmit = async () => {
-    if (!user) return
-
+  const handleAddProduct = async (e) => {
+    e.preventDefault()
+    setIsLoading(true)
     try {
-      // Validate form
-      if (!formData.name || !formData.price || !formData.stock_quantity) {
-        toast({
-          title: "Validation Error",
-          description: "Please fill in all required fields.",
-          variant: "destructive",
-        })
-        return
+      const newProduct = {
+        ...formData,
+        price: Number.parseFloat(formData.price),
+        min_order_quantity: Number.parseInt(formData.min_order_quantity),
+        tax_rate: Number.parseFloat(formData.tax_rate),
       }
 
-      // Upload image if selected
-      let imageUrl = formData.image_url
-      if (imageFile) {
-        const { url, error } = await uploadProductImage(imageFile)
-        if (error) {
-          toast({
-            title: "Error",
-            description: "Failed to upload image. Please try again.",
-            variant: "destructive",
-          })
-          return
-        }
-        imageUrl = url || ""
-      }
-
-      if (selectedProduct) {
-        // Update existing product
-        const { data, error } = await updateProduct(selectedProduct.id, {
-          name: formData.name,
-          description: formData.description,
-          price: Number.parseFloat(formData.price),
-          stock_quantity: Number.parseInt(formData.stock_quantity),
-          image_url: imageUrl,
-          is_active: formData.is_active,
-        })
-
-        if (error) {
-          toast({
-            title: "Error",
-            description: "Failed to update product. Please try again.",
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Success",
-            description: "Product updated successfully.",
-          })
-
-          // Update products list
-          setProducts(products.map((p) => (p.id === selectedProduct.id ? data! : p)))
-          setIsDialogOpen(false)
-        }
-      } else {
-        // Create new product
-        const { data, error } = await createProduct(user.id, {
-          name: formData.name,
-          description: formData.description,
-          price: Number.parseFloat(formData.price),
-          stock_quantity: Number.parseInt(formData.stock_quantity),
-          image_url: imageUrl,
-        })
-
-        if (error) {
-          toast({
-            title: "Error",
-            description: "Failed to create product. Please try again.",
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Success",
-            description: "Product created successfully.",
-          })
-
-          // Update products list
-          if (data) {
-            setProducts([data, ...products])
-          }
-          setIsDialogOpen(false)
-        }
-      }
-    } catch (error) {
-      console.error("Error saving product:", error)
+      await createProduct(newProduct)
       toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        title: t("Success"),
+        description: t("Product added successfully"),
+      })
+      setIsAddDialogOpen(false)
+      resetForm()
+      fetchProducts()
+    } catch (error) {
+      console.error("Error adding product:", error)
+      toast({
+        title: t("Error"),
+        description: t("Failed to add product. Please try again."),
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const confirmDeleteProduct = async () => {
-    if (!selectedProduct) return
-
+  const handleEditProduct = async (e) => {
+    e.preventDefault()
+    setIsLoading(true)
     try {
-      const { success, error } = await deleteProduct(selectedProduct.id)
-
-      if (error || !success) {
-        toast({
-          title: "Error",
-          description: "Failed to delete product. Please try again.",
-          variant: "destructive",
-        })
-      } else {
-        toast({
-          title: "Success",
-          description: "Product deleted successfully.",
-        })
-
-        // Update products list
-        setProducts(products.filter((p) => p.id !== selectedProduct.id))
-        setIsDeleteDialogOpen(false)
+      const updatedProduct = {
+        ...formData,
+        id: currentProduct.id,
+        price: Number.parseFloat(formData.price),
+        min_order_quantity: Number.parseInt(formData.min_order_quantity),
+        tax_rate: Number.parseFloat(formData.tax_rate),
       }
+
+      await updateProduct(updatedProduct)
+      toast({
+        title: t("Success"),
+        description: t("Product updated successfully"),
+      })
+      setIsEditDialogOpen(false)
+      fetchProducts()
+    } catch (error) {
+      console.error("Error updating product:", error)
+      toast({
+        title: t("Error"),
+        description: t("Failed to update product. Please try again."),
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDeleteProduct = async () => {
+    setIsLoading(true)
+    try {
+      await deleteProduct(currentProduct.id)
+      toast({
+        title: t("Success"),
+        description: t("Product deleted successfully"),
+      })
+      setIsDeleteDialogOpen(false)
+      fetchProducts()
     } catch (error) {
       console.error("Error deleting product:", error)
       toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        title: t("Error"),
+        description: t("Failed to delete product. Please try again."),
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Filter products based on search query
-  const filteredProducts = products.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase())),
-  )
+  const openEditDialog = (product) => {
+    setCurrentProduct(product)
+    setFormData({
+      name: product.name,
+      description: product.description || "",
+      price: product.price.toString(),
+      category_id: product.category_id,
+      image_url: product.image_url || "",
+      sku: product.sku || "",
+      is_active: product.is_active,
+      min_order_quantity: product.min_order_quantity?.toString() || "1",
+      unit: product.unit || "piece",
+      tax_rate: product.tax_rate?.toString() || "18",
+      has_variants: product.has_variants || false,
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const openDeleteDialog = (product) => {
+    setCurrentProduct(product)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const filteredProducts = products.filter((product) => {
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
+
+    const matchesCategory = categoryFilter === "all" || product.category_id === categoryFilter
+
+    return matchesSearch && matchesCategory
+  })
 
   return (
-    <div className="container mx-auto max-w-6xl">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Product Catalog</h1>
-        <Button onClick={handleAddProduct} className="bg-blue-500 hover:bg-blue-600">
-          <Plus className="mr-2 h-5 w-5" />
-          Add Product
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">{t("Product Catalog")}</h1>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> {t("Add Product")}
         </Button>
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
           <Input
-            placeholder="Search products..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-12 text-lg"
+            placeholder={t("Search products...")}
+            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          {searchQuery && (
-            <button
-              className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-              onClick={() => setSearchQuery("")}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          )}
         </div>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-full md:w-[200px]">
+            <SelectValue placeholder={t("Filter by category")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("All Categories")}</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Products Grid */}
-      {isLoading ? (
-        <div className="text-center py-12">
-          <p className="text-lg text-gray-500">Loading products...</p>
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="text-center py-12">
-          <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-          <p className="text-lg text-gray-500">
-            {searchQuery ? "No products match your search" : "No products yet. Add your first product!"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className={`overflow-hidden ${!product.is_active ? "opacity-60" : ""}`}>
-              <div className="aspect-video relative bg-gray-100">
-                {product.image_url ? (
-                  <img
-                    src={product.image_url || "/placeholder.svg"}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Package className="h-12 w-12 text-gray-400" />
+      <Tabs defaultValue="grid" className="w-full">
+        <TabsList className="grid w-[200px] grid-cols-2">
+          <TabsTrigger value="grid">{t("Grid")}</TabsTrigger>
+          <TabsTrigger value="list">{t("List")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="grid" className="mt-6">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Card key={i} className="animate-pulse">
+                  <div className="h-48 bg-gray-200 rounded-t-lg"></div>
+                  <CardContent className="p-4">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : filteredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {filteredProducts.map((product) => (
+                <Card key={product.id} className="overflow-hidden">
+                  <div className="relative h-48 bg-gray-100">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url || "/placeholder.svg"}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <Package size={64} className="text-gray-300" />
+                      </div>
+                    )}
+                    {!product.is_active && (
+                      <div className="absolute top-2 right-2">
+                        <Badge variant="destructive">{t("Inactive")}</Badge>
+                      </div>
+                    )}
                   </div>
-                )}
-                {!product.is_active && (
-                  <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded">Inactive</div>
-                )}
-              </div>
-              <CardContent className="p-4">
-                <h3 className="text-xl font-semibold mb-1">{product.name}</h3>
-                <p className="text-gray-500 text-sm mb-2 line-clamp-2">{product.description}</p>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-lg font-bold">₹{product.price.toFixed(2)}</p>
-                    <p className="text-sm text-gray-500">Stock: {product.stock_quantity}</p>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-semibold text-lg line-clamp-1">{product.name}</h3>
+                        <p className="text-sm text-gray-500 line-clamp-2">{product.description}</p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <span className="sr-only">{t("Open menu")}</span>
+                            <svg
+                              width="15"
+                              height="15"
+                              viewBox="0 0 15 15"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                            >
+                              <path
+                                d="M3.625 7.5C3.625 8.12132 3.12132 8.625 2.5 8.625C1.87868 8.625 1.375 8.12132 1.375 7.5C1.375 6.87868 1.87868 6.375 2.5 6.375C3.12132 6.375 3.625 6.87868 3.625 7.5ZM8.625 7.5C8.625 8.12132 8.12132 8.625 7.5 8.625C6.87868 8.625 6.375 8.12132 6.375 7.5C6.375 6.87868 6.87868 6.375 7.5 6.375C8.12132 6.375 8.625 6.87868 8.625 7.5ZM13.625 7.5C13.625 8.12132 13.1213 8.625 12.5 8.625C11.8787 8.625 11.375 8.12132 11.375 7.5C11.375 6.87868 11.8787 6.375 12.5 6.375C13.1213 6.375 13.625 6.87868 13.625 7.5Z"
+                                fill="currentColor"
+                                fillRule="evenodd"
+                                clipRule="evenodd"
+                              ></path>
+                            </svg>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(product)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            {t("Edit")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/wholesaler/inventory/${product.id}`)}>
+                            <Package className="mr-2 h-4 w-4" />
+                            {t("Manage Inventory")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => openDeleteDialog(product)} className="text-red-600">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {t("Delete")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="p-4 pt-0 flex justify-between items-center">
+                    <div className="font-bold">₹{product.price.toFixed(2)}</div>
+                    {product.sku && (
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">SKU:</span> {product.sku}
+                      </div>
+                    )}
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Package className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-lg font-medium">{t("No products found")}</h3>
+              <p className="mt-1 text-gray-500">
+                {t("Try adjusting your search or filter to find what you're looking for.")}
+              </p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="list" className="mt-6">
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse flex items-center p-4 border rounded-lg">
+                  <div className="h-16 w-16 bg-gray-200 rounded mr-4"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                   </div>
+                  <div className="h-8 w-24 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          ) : filteredProducts.length > 0 ? (
+            <div className="space-y-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="flex items-center p-4 border rounded-lg hover:bg-gray-50">
+                  <div className="h-16 w-16 bg-gray-100 rounded mr-4 flex items-center justify-center overflow-hidden">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url || "/placeholder.svg"}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Package size={24} className="text-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center">
+                      <h3 className="font-semibold">{product.name}</h3>
+                      {!product.is_active && (
+                        <Badge variant="destructive" className="ml-2">
+                          {t("Inactive")}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 line-clamp-1">{product.description}</p>
+                    <div className="flex items-center mt-1 text-xs text-gray-500">
+                      {product.sku && (
+                        <span className="mr-3">
+                          <span className="font-medium">SKU:</span> {product.sku}
+                        </span>
+                      )}
+                      {categories.find((c) => c.id === product.category_id)?.name && (
+                        <span className="flex items-center">
+                          <Tag size={12} className="mr-1" />
+                          {categories.find((c) => c.id === product.category_id)?.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-bold text-lg mr-4">₹{product.price.toFixed(2)}</div>
                   <div className="flex space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => handleEditProduct(product)}>
-                      <Edit className="h-4 w-4" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/wholesaler/inventory/${product.id}`)}
+                    >
+                      <Package className="mr-2 h-4 w-4" />
+                      {t("Inventory")}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => openEditDialog(product)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      {t("Edit")}
                     </Button>
                     <Button
-                      size="sm"
                       variant="outline"
-                      className="text-red-500 border-red-500 hover:bg-red-50"
-                      onClick={() => handleDeleteProduct(product)}
+                      size="sm"
+                      onClick={() => openDeleteDialog(product)}
+                      className="text-red-600 border-red-200 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Package className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-lg font-medium">{t("No products found")}</h3>
+              <p className="mt-1 text-gray-500">
+                {t("Try adjusting your search or filter to find what you're looking for.")}
+              </p>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
-      {/* Add/Edit Product Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* Add Product Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{selectedProduct ? "Edit Product" : "Add New Product"}</DialogTitle>
-            <DialogDescription>
-              {selectedProduct
-                ? "Update your product details below"
-                : "Fill in the details to add a new product to your catalog"}
-            </DialogDescription>
+            <DialogTitle>{t("Add New Product")}</DialogTitle>
+            <DialogDescription>{t("Fill in the details to add a new product to your catalog.")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Enter product name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Enter product description"
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price (₹) *</Label>
-                <Input
-                  id="price"
-                  name="price"
-                  type="number"
-                  value={formData.price}
-                  onChange={handleInputChange}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_quantity">Stock Quantity *</Label>
-                <Input
-                  id="stock_quantity"
-                  name="stock_quantity"
-                  type="number"
-                  value={formData.stock_quantity}
-                  onChange={handleInputChange}
-                  placeholder="0"
-                  min="0"
-                  step="1"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="image">Product Image</Label>
-              <div className="flex items-center gap-4">
-                {imagePreview && (
-                  <div className="relative w-16 h-16">
-                    <img
-                      src={imagePreview || "/placeholder.svg"}
-                      alt="Preview"
-                      className="w-full h-full object-cover rounded"
-                    />
-                    <button
-                      type="button"
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                      onClick={() => {
-                        setImageFile(null)
-                        setImagePreview(null)
-                        setFormData({ ...formData, image_url: "" })
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-                <div className="flex-1">
-                  <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => document.getElementById("image")?.click()}
-                    className="w-full"
-                  >
-                    <ImageIcon className="mr-2 h-4 w-4" />
-                    {imagePreview ? "Change Image" : "Upload Image"}
-                  </Button>
+          <form onSubmit={handleAddProduct}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">{t("Product Name")} *</Label>
+                  <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sku">{t("SKU")}</Label>
+                  <Input id="sku" name="sku" value={formData.sku} onChange={handleInputChange} />
                 </div>
               </div>
-            </div>
-            {selectedProduct && (
-              <div className="flex items-center space-x-2">
-                <Switch id="is_active" checked={formData.is_active} onCheckedChange={handleSwitchChange} />
-                <Label htmlFor="is_active">Active</Label>
+              <div className="space-y-2">
+                <Label htmlFor="description">{t("Description")}</Label>
+                <Textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={3}
+                />
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} className="bg-blue-500 hover:bg-blue-600">
-              {selectedProduct ? "Update Product" : "Add Product"}
-            </Button>
-          </DialogFooter>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="price">{t("Price")} (₹) *</Label>
+                  <Input
+                    id="price"
+                    name="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">{t("Category")} *</Label>
+                  <Select
+                    name="category_id"
+                    value={formData.category_id}
+                    onValueChange={(value) => handleSelectChange("category_id", value)}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("Select category")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="min_order_quantity">{t("Min Order Quantity")}</Label>
+                  <Input
+                    id="min_order_quantity"
+                    name="min_order_quantity"
+                    type="number"
+                    min="1"
+                    value={formData.min_order_quantity}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="unit">{t("Unit")}</Label>
+                  <Select
+                    name="unit"
+                    value={formData.unit}
+                    onValueChange={(value) => handleSelectChange("unit", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="piece">{t("Piece")}</SelectItem>
+                      <SelectItem value="kg">{t("Kilogram")}</SelectItem>
+                      <SelectItem value="g">{t("Gram")}</SelectItem>
+                      <SelectItem value="l">{t("Liter")}</SelectItem>
+                      <SelectItem value="ml">{t("Milliliter")}</SelectItem>
+                      <SelectItem value="box">{t("Box")}</SelectItem>
+                      <SelectItem value="pack">{t("Pack")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tax_rate">{t("Tax Rate")} (%)</Label>
+                  <Input
+                    id="tax_rate"
+                    name="tax_rate"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.tax_rate}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="image_url">{t("Image URL")}</Label>
+                  <Input
+                    id="image_url"
+                    name="image_url"
+                    type="url"
+                    value={formData.image_url}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="is_active"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+                <Label htmlFor="is_active">{t("Active (visible to retailers)")}</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="has_variants"
+                  name="has_variants"
+                  checked={formData.has_variants}
+                  onCheckedChange={(checked) => setFormData({ ...formData, has_variants: checked })}
+                />
+                <Label htmlFor="has_variants">{t("This product has variants")}</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                {t("Cancel")}
+              </Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? t("Adding...") : t("Add Product")}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Edit Product Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("Edit Product")}</DialogTitle>
+            <DialogDescription>{t("Update the details of your product.")}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditProduct}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-name">{t("Product Name")} *</Label>
+                  <Input id="edit-name" name="name" value={formData.name} onChange={handleInputChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sku">{t("SKU")}</Label>
+                  <Input id="edit-sku" name="sku" value={formData.sku} onChange={handleInputChange} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">{t("Description")}</Label>
+                <Textarea
+                  id="edit-description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-price">{t("Price")} (₹) *</Label>
+                  <Input
+                    id="edit-price"
+                    name="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-category_id">{t("Category")} *</Label>
+                  <Select
+                    name="category_id"
+                    value={formData.category_id}
+                    onValueChange={(value) => handleSelectChange("category_id", value)}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("Select category")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-min_order_quantity">{t("Min Order Quantity")}</Label>
+                  <Input
+                    id="edit-min_order_quantity"
+                    name="min_order_quantity"
+                    type="number"
+                    min="1"
+                    value={formData.min_order_quantity}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-unit">{t("Unit")}</Label>
+                  <Select
+                    name="unit"
+                    value={formData.unit}
+                    onValueChange={(value) => handleSelectChange("unit", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="piece">{t("Piece")}</SelectItem>
+                      <SelectItem value="kg">{t("Kilogram")}</SelectItem>
+                      <SelectItem value="g">{t("Gram")}</SelectItem>
+                      <SelectItem value="l">{t("Liter")}</SelectItem>
+                      <SelectItem value="ml">{t("Milliliter")}</SelectItem>
+                      <SelectItem value="box">{t("Box")}</SelectItem>
+                      <SelectItem value="pack">{t("Pack")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-tax_rate">{t("Tax Rate")} (%)</Label>
+                  <Input
+                    id="edit-tax_rate"
+                    name="tax_rate"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.tax_rate}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-image_url">{t("Image URL")}</Label>
+                  <Input
+                    id="edit-image_url"
+                    name="image_url"
+                    type="url"
+                    value={formData.image_url}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-is_active"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+                <Label htmlFor="edit-is_active">{t("Active (visible to retailers)")}</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-has_variants"
+                  name="has_variants"
+                  checked={formData.has_variants}
+                  onCheckedChange={(checked) => setFormData({ ...formData, has_variants: checked })}
+                />
+                <Label htmlFor="edit-has_variants">{t("This product has variants")}</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                {t("Cancel")}
+              </Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? t("Updating...") : t("Update Product")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Product Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogTitle>{t("Delete Product")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{selectedProduct?.name}"? This action cannot be undone.
+              {t("Are you sure you want to delete this product? This action cannot be undone.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Cancel
+            <Button type="button" variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              {t("Cancel")}
             </Button>
-            <Button variant="destructive" onClick={confirmDeleteProduct}>
-              Delete Product
+            <Button type="button" variant="destructive" onClick={handleDeleteProduct} disabled={isLoading}>
+              {isLoading ? t("Deleting...") : t("Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Toaster />
     </div>
-  )
-}
-
-export default function ProductsPage() {
-  return (
-    <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <ProductsContent />
-        </main>
-      </div>
-    </TranslationProvider>
   )
 }

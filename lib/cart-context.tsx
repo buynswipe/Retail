@@ -1,9 +1,10 @@
 "use client"
 
-import type React from "react"
-
-import { createContext, useContext, useState, useEffect } from "react"
-import type { Product } from "./supabase-client"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import type { Product } from "./types"
+import { useAuth } from "./auth-context"
+import { useOffline } from "./offline-context"
+import { getProductById } from "./product-service"
 
 export interface CartItem {
   product: Product
@@ -17,74 +18,61 @@ interface CartContextType {
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
-  setWholesalerId: (id: string | null) => void
-  totalItems: number
-  totalAmount: number
+  itemCount: number
+  total: number
+  isCartOpen: boolean
+  setIsCartOpen: (isOpen: boolean) => void
 }
 
-const CartContext = createContext<CartContextType>({
-  items: [],
-  wholesalerId: null,
-  addItem: () => {},
-  removeItem: () => {},
-  updateQuantity: () => {},
-  clearCart: () => {},
-  setWholesalerId: () => {},
-  totalItems: 0,
-  totalAmount: 0,
-})
+const CartContext = createContext<CartContextType | undefined>(undefined)
 
-export function CartProvider({ children }: { children: React.ReactNode }) {
+export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [wholesalerId, setWholesalerId] = useState<string | null>(null)
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const { user } = useAuth()
+  const { isOffline, syncOnline } = useOffline()
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
 
-  // Load cart from localStorage on mount
+  // Load cart from localStorage on initial render
   useEffect(() => {
-    try {
-      const savedCart = localStorage.getItem("cart")
-      const savedWholesalerId = localStorage.getItem("wholesalerId")
-
+    if (user?.role === "retailer") {
+      const savedCart = localStorage.getItem(`cart_${user.id}`)
       if (savedCart) {
-        setItems(JSON.parse(savedCart))
+        try {
+          const parsedCart = JSON.parse(savedCart)
+          setItems(parsedCart.items || [])
+          setWholesalerId(parsedCart.wholesalerId || null)
+        } catch (error) {
+          console.error("Failed to parse saved cart:", error)
+        }
       }
-
-      if (savedWholesalerId) {
-        setWholesalerId(savedWholesalerId)
-      }
-    } catch (error) {
-      console.error("Error loading cart from localStorage:", error)
     }
-  }, [])
+  }, [user])
 
   // Save cart to localStorage whenever it changes
   useEffect(() => {
-    try {
-      localStorage.setItem("cart", JSON.stringify(items))
-    } catch (error) {
-      console.error("Error saving cart to localStorage:", error)
+    if (user?.role === "retailer") {
+      localStorage.setItem(
+        `cart_${user.id}`,
+        JSON.stringify({
+          items,
+          wholesalerId,
+        }),
+      )
     }
-  }, [items])
+  }, [items, wholesalerId, user])
 
-  // Save wholesalerId to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      if (wholesalerId) {
-        localStorage.setItem("wholesalerId", wholesalerId)
-      } else {
-        localStorage.removeItem("wholesalerId")
-      }
-    } catch (error) {
-      console.error("Error saving wholesalerId to localStorage:", error)
-    }
-  }, [wholesalerId])
-
-  // Add item to cart
   const addItem = (product: Product, quantity: number) => {
-    // Check if product is from the same wholesaler
-    if (wholesalerId && product.wholesaler_id !== wholesalerId) {
-      // Clear cart if adding product from a different wholesaler
-      setItems([{ product, quantity }])
+    if (quantity <= 0) return
+
+    // If cart is empty, set the wholesaler ID
+    if (items.length === 0) {
       setWholesalerId(product.wholesaler_id)
+    }
+    // If trying to add a product from a different wholesaler, show error
+    else if (wholesalerId && product.wholesaler_id !== wholesalerId) {
+      alert("You can only add products from the same wholesaler in a single order.")
       return
     }
 
@@ -101,24 +89,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return [...prevItems, { product, quantity }]
       }
     })
-
-    // Set wholesalerId if not already set
-    if (!wholesalerId) {
-      setWholesalerId(product.wholesaler_id)
-    }
   }
 
-  // Remove item from cart
   const removeItem = (productId: string) => {
     setItems((prevItems) => prevItems.filter((item) => item.product.id !== productId))
 
-    // Clear wholesalerId if cart is empty
-    if (items.length === 1 && items[0].product.id === productId) {
+    // If cart becomes empty, reset wholesaler ID
+    if (items.length === 1) {
       setWholesalerId(null)
     }
   }
 
-  // Update item quantity
   const updateQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeItem(productId)
@@ -128,17 +109,47 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems((prevItems) => prevItems.map((item) => (item.product.id === productId ? { ...item, quantity } : item)))
   }
 
-  // Clear cart
   const clearCart = () => {
     setItems([])
     setWholesalerId(null)
   }
 
-  // Calculate total items
-  const totalItems = items.reduce((total, item) => total + item.quantity, 0)
+  const itemCount = items.reduce((total, item) => total + item.quantity, 0)
 
-  // Calculate total amount
-  const totalAmount = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
+  const total = items.reduce((total, item) => total + item.product.price * item.quantity, 0)
+
+  // Sync cart with online data when coming back online
+  useEffect(() => {
+    if (!isOffline && items.length > 0) {
+      const syncCartProducts = async () => {
+        const updatedItems = await Promise.all(
+          items.map(async (item) => {
+            try {
+              // Get the latest product data (especially stock quantity)
+              const { data: freshProduct } = await getProductById(item.product.id)
+              if (freshProduct) {
+                // Adjust quantity if it exceeds available stock
+                const updatedQuantity = Math.min(item.quantity, freshProduct.stock_quantity)
+                return {
+                  product: freshProduct,
+                  quantity: updatedQuantity,
+                }
+              }
+              return item
+            } catch (error) {
+              console.error(`Failed to sync product ${item.product.id}:`, error)
+              return item
+            }
+          }),
+        )
+
+        // Update cart with fresh data
+        setItems(updatedItems.filter((item) => item.quantity > 0))
+      }
+
+      syncCartProducts()
+    }
+  }, [isOffline, syncOnline])
 
   return (
     <CartContext.Provider
@@ -149,9 +160,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removeItem,
         updateQuantity,
         clearCart,
-        setWholesalerId,
-        totalItems,
-        totalAmount,
+        itemCount,
+        total,
+        isCartOpen,
+        setIsCartOpen,
       }}
     >
       {children}
@@ -160,5 +172,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useCart() {
-  return useContext(CartContext)
+  const context = useContext(CartContext)
+  if (context === undefined) {
+    throw new Error("useCart must be used within a CartProvider")
+  }
+  return context
 }

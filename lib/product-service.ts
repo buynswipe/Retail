@@ -1,169 +1,125 @@
-import { supabase } from "./supabase-client"
-import type { Product } from "./supabase-client"
+import { createClient } from "@/lib/supabase-client"
 
-/**
- * Get all products
- */
-export async function getProducts(options = { limit: 50, offset: 0 }) {
-  try {
-    const { data, error, count } = await supabase
-      .from("Products")
-      .select("*, Categories(*)", { count: "exact" })
-      .range(options.offset, options.offset + options.limit - 1)
-      .order("created_at", { ascending: false })
+// Get all products
+export async function getAllProducts(filters = {}) {
+  const supabase = createClient()
 
-    return { data, error, count }
-  } catch (error) {
-    console.error("Error fetching products:", error)
-    return { data: null, error, count: 0 }
+  let query = supabase.from("products").select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
+
+  // Apply filters if provided
+  if (filters.category_id) {
+    query = query.eq("category_id", filters.category_id)
   }
+
+  if (filters.wholesaler_id) {
+    query = query.eq("wholesaler_id", filters.wholesaler_id)
+  }
+
+  if (filters.search) {
+    query = query.ilike("name", `%${filters.search}%`)
+  }
+
+  return await query.order("created_at", { ascending: false })
 }
 
-/**
- * Alias for getProducts
- */
-export async function getAllProducts(options = { limit: 50, offset: 0 }) {
-  return getProducts(options)
+// Get product by ID
+export async function getProductById(id) {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
+    .eq("id", id)
+    .single()
+
+  return { data, error }
 }
 
-/**
- * Get products by wholesaler
- */
-export async function getProductsByWholesaler(wholesalerId: string, options = { limit: 50, offset: 0 }) {
-  try {
-    const { data, error, count } = await supabase
-      .from("Products")
-      .select("*, Categories(*)", { count: "exact" })
-      .eq("wholesaler_id", wholesalerId)
-      .range(options.offset, options.offset + options.limit - 1)
-      .order("created_at", { ascending: false })
+// Create a new product
+export async function createProduct(productData) {
+  const supabase = createClient()
 
-    return { data, error, count }
-  } catch (error) {
-    console.error("Error fetching wholesaler products:", error)
-    return { data: null, error, count: 0 }
-  }
+  return await supabase.from("products").insert(productData).select()
 }
 
-/**
- * Get a product by ID
- */
-export async function getProductById(productId: string) {
-  try {
-    const { data, error } = await supabase.from("Products").select("*, Categories(*)").eq("id", productId).single()
+// Update a product
+export async function updateProduct(id, productData) {
+  const supabase = createClient()
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error fetching product:", error)
-    return { data: null, error }
-  }
+  return await supabase.from("products").update(productData).eq("id", id).select()
 }
 
-/**
- * Create a new product
- */
-export async function createProduct(product: Omit<Product, "id" | "created_at">) {
-  try {
-    const { data, error } = await supabase.from("Products").insert(product).select().single()
+// Delete a product
+export async function deleteProduct(id) {
+  const supabase = createClient()
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error creating product:", error)
-    return { data: null, error }
-  }
+  return await supabase.from("products").delete().eq("id", id)
 }
 
-/**
- * Update a product
- */
-export async function updateProduct(productId: string, updates: Partial<Product>) {
-  try {
-    const { data, error } = await supabase.from("Products").update(updates).eq("id", productId).select().single()
+// Get products by category
+export async function getProductsByCategory(categoryId) {
+  const supabase = createClient()
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error updating product:", error)
-    return { data: null, error }
-  }
+  return await supabase
+    .from("products")
+    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
+    .eq("category_id", categoryId)
+    .order("created_at", { ascending: false })
 }
 
-/**
- * Delete a product
- */
-export async function deleteProduct(productId: string) {
-  try {
-    const { error } = await supabase.from("Products").delete().eq("id", productId)
+// Get products by wholesaler
+export async function getProductsByWholesaler(wholesalerId) {
+  const supabase = createClient()
 
-    return { success: !error, error }
-  } catch (error) {
-    console.error("Error deleting product:", error)
-    return { success: false, error }
-  }
+  return await supabase
+    .from("products")
+    .select("*, categories(name)")
+    .eq("wholesaler_id", wholesalerId)
+    .order("created_at", { ascending: false })
 }
 
-/**
- * Search products
- */
-export async function searchProducts(query: string, options = { limit: 50, offset: 0 }) {
-  try {
-    const { data, error, count } = await supabase
-      .from("Products")
-      .select("*, Categories(*)", { count: "exact" })
-      .or(`name.ilike.%${query}%, description.ilike.%${query}%`)
-      .range(options.offset, options.offset + options.limit - 1)
-      .order("created_at", { ascending: false })
+// Search products
+export async function searchProducts(query) {
+  const supabase = createClient()
 
-    return { data, error, count }
-  } catch (error) {
-    console.error("Error searching products:", error)
-    return { data: null, error, count: 0 }
-  }
+  return await supabase
+    .from("products")
+    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
+    .ilike("name", `%${query}%`)
+    .order("created_at", { ascending: false })
 }
 
-/**
- * Upload a product image
- */
-export async function uploadProductImage(file: File, wholesalerId: string) {
-  try {
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${wholesalerId}/${Date.now()}.${fileExt}`
-    const filePath = `product-images/${fileName}`
-
-    const { data, error } = await supabase.storage.from("products").upload(filePath, file, {
-      cacheControl: "3600",
-      upsert: false,
-    })
-
-    if (error) throw error
-
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("products").getPublicUrl(filePath)
-
-    return {
-      data: {
-        path: filePath,
-        url: publicUrl,
-      },
-      error: null,
-    }
-  } catch (error) {
-    console.error("Error uploading product image:", error)
-    return { data: null, error }
-  }
+// Get products (alias for getAllProducts for compatibility)
+export async function getProducts(filters = {}) {
+  return await getAllProducts(filters)
 }
 
-/**
- * Get product categories
- */
-export async function getProductCategories() {
-  try {
-    const { data, error } = await supabase.from("Categories").select("*").order("name", { ascending: true })
+// Get featured products
+export async function getFeaturedProducts(limit = 6) {
+  const supabase = createClient()
 
-    return { data, error }
-  } catch (error) {
-    console.error("Error fetching product categories:", error)
-    return { data: null, error }
-  }
+  return await supabase
+    .from("products")
+    .select("*, categories(name), wholesaler:wholesaler_id(id, name, business_name)")
+    .eq("is_featured", true)
+    .limit(limit)
+    .order("created_at", { ascending: false })
+}
+
+// Get product reviews
+export async function getProductReviews(productId) {
+  const supabase = createClient()
+
+  return await supabase
+    .from("product_reviews")
+    .select("*, retailer:retailer_id(id, name)")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+}
+
+// Add product review
+export async function addProductReview(reviewData) {
+  const supabase = createClient()
+
+  return await supabase.from("product_reviews").insert(reviewData).select()
 }

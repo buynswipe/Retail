@@ -1,562 +1,654 @@
 import { supabase } from "./supabase-client"
+import type { Order } from "./types"
+import { updateProductStock } from "./inventory-service"
+import { createNotification } from "./notification-service"
 
-export interface Order {
-  id: string
-  order_number: string
+// Create a new order
+export async function createOrder(orderData: {
   retailer_id: string
   wholesaler_id: string
   total_amount: number
-  status: string
-  payment_method: string
   payment_status: string
-  created_at: string
-  updated_at: string
-  items?: OrderItem[]
-}
-
-export interface OrderItem {
-  id: string
-  order_id: string
-  product_id: string
-  quantity: number
-  unit_price: number
-  total_price: number
-}
-
-/**
- * Get orders by retailer
- */
-export async function getOrdersByRetailer(retailerId: string, options = { limit: 50, offset: 0 }) {
+  delivery_address: string
+  delivery_contact: string
+  notes?: string
+  items: {
+    product_id: string
+    quantity: number
+    unit_price: number
+  }[]
+}): Promise<{ data: Order | null; error: any }> {
   try {
-    console.log("Fetching orders for retailer:", retailerId)
+    // Start a transaction
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        retailer_id: orderData.retailer_id,
+        wholesaler_id: orderData.wholesaler_id,
+        status: "pending",
+        total_amount: orderData.total_amount,
+        payment_status: orderData.payment_status,
+        delivery_address: orderData.delivery_address,
+        delivery_contact: orderData.delivery_contact,
+        notes: orderData.notes,
+        expected_delivery_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days from now
+      })
+      .select()
+      .single()
 
-    // Use lowercase table names as they are typically stored in Supabase
-    // Try with orders first
-    try {
-      const { data, error, count } = await supabase
-        .from("orders")
-        .select(`*, order_items(*)`, { count: "exact" })
-        .eq("retailer_id", retailerId)
-        .range(options.offset, options.offset + options.limit - 1)
-        .order("created_at", { ascending: false })
-
-      if (!error) {
-        console.log(`Successfully fetched ${data?.length || 0} orders from 'orders' table`)
-        return { data, error, count }
-      }
-    } catch (err) {
-      console.log("Error querying 'orders' table:", err)
+    if (orderError) {
+      throw orderError
     }
 
-    // If that fails, try with Orders (capitalized)
-    try {
-      const { data, error, count } = await supabase
-        .from("Orders")
-        .select(`*, OrderItems(*)`, { count: "exact" })
-        .eq("retailer_id", retailerId)
-        .range(options.offset, options.offset + options.limit - 1)
-        .order("created_at", { ascending: false })
+    // Insert order items
+    const orderItems = orderData.items.map((item) => ({
+      order_id: order.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      subtotal: item.quantity * item.unit_price,
+    }))
 
-      if (!error) {
-        console.log(`Successfully fetched ${data?.length || 0} orders from 'Orders' table`)
-        return { data, error, count }
-      }
-    } catch (err) {
-      console.log("Error querying 'Orders' table:", err)
+    const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
+
+    if (itemsError) {
+      throw itemsError
     }
 
-    // If both fail, return mock data for demo purposes
-    console.log("Using mock order data")
-    const mockOrders = [
-      {
-        id: "1",
-        order_number: "ORD-001",
-        retailer_id: retailerId,
-        wholesaler_id: "1",
-        total_amount: 5000,
-        status: "delivered",
-        payment_method: "cash",
-        payment_status: "paid",
-        created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-        items: [
-          {
-            id: "1",
-            order_id: "1",
-            product_id: "1",
-            quantity: 10,
-            unit_price: 500,
-            total_price: 5000,
-          },
-        ],
-      },
-      {
-        id: "2",
-        order_number: "ORD-002",
-        retailer_id: retailerId,
-        wholesaler_id: "2",
-        total_amount: 3000,
-        status: "confirmed",
-        payment_method: "online",
-        payment_status: "paid",
-        created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-        items: [
-          {
-            id: "2",
-            order_id: "2",
-            product_id: "2",
-            quantity: 5,
-            unit_price: 600,
-            total_price: 3000,
-          },
-        ],
-      },
-      {
-        id: "3",
-        order_number: "ORD-003",
-        retailer_id: retailerId,
-        wholesaler_id: "3",
-        total_amount: 2000,
-        status: "placed",
-        payment_method: "credit",
-        payment_status: "pending",
-        created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-        items: [
-          {
-            id: "3",
-            order_id: "3",
-            product_id: "3",
-            quantity: 2,
-            unit_price: 1000,
-            total_price: 2000,
-          },
-        ],
-      },
-    ]
+    // Create notifications for both retailer and wholesaler
+    await createNotification({
+      user_id: orderData.retailer_id,
+      title: "Order Placed",
+      message: `Your order #${order.id.slice(0, 8)} has been placed successfully.`,
+      type: "order",
+      reference_id: order.id,
+    })
 
-    return { data: mockOrders, error: null, count: mockOrders.length }
-  } catch (error) {
-    console.error("Error fetching retailer orders:", error)
-    return { data: null, error, count: 0 }
-  }
-}
+    await createNotification({
+      user_id: orderData.wholesaler_id,
+      title: "New Order Received",
+      message: `You have received a new order #${order.id.slice(0, 8)}.`,
+      type: "order",
+      reference_id: order.id,
+    })
 
-/**
- * Alias for getOrdersByRetailer
- */
-export async function getRetailerOrders(retailerId: string, options = { limit: 50, offset: 0 }) {
-  return getOrdersByRetailer(retailerId, options)
-}
-
-/**
- * Get orders by wholesaler
- */
-export async function getOrdersByWholesaler(wholesalerId: string, options = { limit: 50, offset: 0 }) {
-  try {
-    // Try with lowercase table names first
-    try {
-      const { data, error, count } = await supabase
-        .from("orders")
-        .select("*, order_items(*)", { count: "exact" })
-        .eq("wholesaler_id", wholesalerId)
-        .range(options.offset, options.offset + options.limit - 1)
-        .order("created_at", { ascending: false })
-
-      if (!error) {
-        return { data, error, count }
-      }
-    } catch (err) {
-      console.log("Error querying 'orders' table:", err)
-    }
-
-    // If that fails, try with capitalized table names
-    try {
-      const { data, error, count } = await supabase
-        .from("Orders")
-        .select("*, OrderItems(*)", { count: "exact" })
-        .eq("wholesaler_id", wholesalerId)
-        .range(options.offset, options.offset + options.limit - 1)
-        .order("created_at", { ascending: false })
-
-      if (!error) {
-        return { data, error, count }
-      }
-    } catch (err) {
-      console.log("Error querying 'Orders' table:", err)
-    }
-
-    // If both fail, return mock data
-    const mockOrders = [
-      {
-        id: "1",
-        order_number: "ORD-001",
-        retailer_id: "1",
-        wholesaler_id: wholesalerId,
-        total_amount: 5000,
-        status: "delivered",
-        payment_method: "cash",
-        payment_status: "paid",
-        created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]
-
-    return { data: mockOrders, error: null, count: mockOrders.length }
-  } catch (error) {
-    console.error("Error fetching wholesaler orders:", error)
-    return { data: null, error, count: 0 }
-  }
-}
-
-/**
- * Alias for getOrdersByWholesaler
- */
-export async function getWholesalerOrders(wholesalerId: string, options = { limit: 50, offset: 0 }) {
-  return getOrdersByWholesaler(wholesalerId, options)
-}
-
-/**
- * Get an order by ID
- */
-export async function getOrderById(orderId: string) {
-  try {
-    // Try with lowercase table names first
-    try {
-      const { data, error } = await supabase.from("orders").select("*, order_items(*)").eq("id", orderId).single()
-
-      if (!error) {
-        return { data, error }
-      }
-    } catch (err) {
-      console.log("Error querying 'orders' table:", err)
-    }
-
-    // If that fails, try with capitalized table names
-    try {
-      const { data, error } = await supabase.from("Orders").select("*, OrderItems(*)").eq("id", orderId).single()
-
-      if (!error) {
-        return { data, error }
-      }
-    } catch (err) {
-      console.log("Error querying 'Orders' table:", err)
-    }
-
-    // If both fail, return mock data
-    const mockOrder = {
-      id: orderId,
-      order_number: `ORD-${orderId}`,
-      retailer_id: "1",
-      wholesaler_id: "1",
-      total_amount: 5000,
-      status: "delivered",
-      payment_method: "cash",
-      payment_status: "paid",
-      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-      items: [
-        {
-          id: "1",
-          order_id: orderId,
-          product_id: "1",
-          quantity: 10,
-          unit_price: 500,
-          total_price: 5000,
-        },
-      ],
-    }
-
-    return { data: mockOrder, error: null }
-  } catch (error) {
-    console.error("Error fetching order:", error)
-    return { data: null, error }
-  }
-}
-
-/**
- * Create a new order
- */
-export async function createOrder(order: Omit<Order, "id" | "created_at">, orderItems: any[]) {
-  try {
-    // Try with lowercase table names first
-    try {
-      const { data: orderData, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          ...order,
-          status: order.status || "pending",
-        })
-        .select()
-        .single()
-
-      if (!orderError) {
-        const orderItemsWithOrderId = orderItems.map((item) => ({
-          ...item,
-          order_id: orderData.id,
-        }))
-
-        const { error: itemsError } = await supabase.from("order_items").insert(orderItemsWithOrderId)
-
-        if (!itemsError) {
-          return { data: orderData, error: null }
-        }
-      }
-    } catch (err) {
-      console.log("Error inserting into 'orders' table:", err)
-    }
-
-    // If that fails, try with capitalized table names
-    try {
-      const { data: orderData, error: orderError } = await supabase
-        .from("Orders")
-        .insert({
-          ...order,
-          status: order.status || "pending",
-        })
-        .select()
-        .single()
-
-      if (!orderError) {
-        const orderItemsWithOrderId = orderItems.map((item) => ({
-          ...item,
-          order_id: orderData.id,
-        }))
-
-        const { error: itemsError } = await supabase.from("OrderItems").insert(orderItemsWithOrderId)
-
-        if (!itemsError) {
-          return { data: orderData, error: null }
-        }
-      }
-    } catch (err) {
-      console.log("Error inserting into 'Orders' table:", err)
-    }
-
-    // If both fail, return mock data
-    const mockOrder = {
-      id: Math.random().toString(36).substring(2, 15),
-      order_number: `ORD-${Math.floor(Math.random() * 1000)}`,
-      ...order,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    return { data: mockOrder, error: null }
+    return { data: order, error: null }
   } catch (error) {
     console.error("Error creating order:", error)
     return { data: null, error }
   }
 }
 
-/**
- * Update order status
- */
-export async function updateOrderStatus(orderId: string, status: string) {
+// Get orders for a retailer
+export async function getRetailerOrders(retailerId: string): Promise<{ data: Order[] | null; error: any }> {
   try {
-    // Try with lowercase table names first
-    try {
-      const { data, error } = await supabase.from("orders").update({ status }).eq("id", orderId).select().single()
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          subtotal,
+          product:products(*)
+        ),
+        wholesaler:users!wholesaler_id(
+          id,
+          name,
+          business_name,
+          profile_image,
+          city,
+          state
+        )
+      `,
+      )
+      .eq("retailer_id", retailerId)
+      .order("created_at", { ascending: false })
 
-      if (!error) {
-        return { data, error }
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting retailer orders:", error)
+    return { data: null, error }
+  }
+}
+
+// Get orders for a wholesaler
+export async function getWholesalerOrders(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          subtotal,
+          product:products(*)
+        ),
+        retailer:users!retailer_id(
+          id,
+          name,
+          business_name,
+          profile_image,
+          city,
+          state
+        )
+      `,
+      )
+      .eq("wholesaler_id", wholesalerId)
+      .order("created_at", { ascending: false })
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting wholesaler orders:", error)
+    return { data: null, error }
+  }
+}
+
+// Get order by ID
+export async function getOrderById(orderId: string): Promise<{ data: Order | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        `
+        *,
+        items:order_items(
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          subtotal,
+          product:products(*)
+        ),
+        retailer:users!retailer_id(
+          id,
+          name,
+          business_name,
+          profile_image,
+          address,
+          city,
+          state,
+          pincode,
+          phone,
+          email
+        ),
+        wholesaler:users!wholesaler_id(
+          id,
+          name,
+          business_name,
+          profile_image,
+          address,
+          city,
+          state,
+          pincode,
+          phone,
+          email
+        )
+      `,
+      )
+      .eq("id", orderId)
+      .single()
+
+    return { data, error }
+  } catch (error) {
+    console.error("Error getting order:", error)
+    return { data: null, error }
+  }
+}
+
+// Update order status
+export async function updateOrderStatus(
+  orderId: string,
+  status: string,
+  userId: string,
+  userRole: string,
+  reason?: string,
+): Promise<{ success: boolean; error: any }> {
+  try {
+    // Get the current order
+    const { data: order, error: orderError } = await getOrderById(orderId)
+
+    if (orderError || !order) {
+      throw orderError || new Error("Order not found")
+    }
+
+    // Check permissions
+    if (
+      (userRole === "retailer" && order.retailer_id !== userId) ||
+      (userRole === "wholesaler" && order.wholesaler_id !== userId)
+    ) {
+      throw new Error("You don't have permission to update this order")
+    }
+
+    // Validate status transitions
+    const validTransitions: Record<string, string[]> = {
+      pending: ["confirmed", "cancelled"],
+      confirmed: ["processing", "cancelled"],
+      processing: ["shipped", "cancelled"],
+      shipped: ["delivered", "cancelled"],
+      delivered: ["returned"],
+      cancelled: [],
+      returned: [],
+    }
+
+    if (!validTransitions[order.status].includes(status)) {
+      throw new Error(`Cannot transition from ${order.status} to ${status}`)
+    }
+
+    // Update the order status
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+        status_history: [
+          ...(order.status_history || []),
+          {
+            status: status,
+            timestamp: new Date().toISOString(),
+            updated_by: userId,
+            role: userRole,
+            reason: reason || null,
+          },
+        ],
+      })
+      .eq("id", orderId)
+
+    if (updateError) {
+      throw updateError
+    }
+
+    // Handle inventory updates for specific status changes
+    if (status === "confirmed" && order.status === "pending") {
+      // Reserve inventory when order is confirmed
+      for (const item of order.items) {
+        await updateProductStock(item.product_id, -item.quantity, "reserved", `Reserved for order #${orderId}`)
       }
-    } catch (err) {
-      console.log("Error updating 'orders' table:", err)
-    }
-
-    // If that fails, try with capitalized table names
-    try {
-      const { data, error } = await supabase.from("Orders").update({ status }).eq("id", orderId).select().single()
-
-      if (!error) {
-        return { data, error }
+    } else if (status === "cancelled") {
+      // Return inventory if order is cancelled after confirmation
+      if (["confirmed", "processing"].includes(order.status)) {
+        for (const item of order.items) {
+          await updateProductStock(
+            item.product_id,
+            item.quantity,
+            "returned",
+            `Returned from cancelled order #${orderId}`,
+          )
+        }
       }
-    } catch (err) {
-      console.log("Error updating 'Orders' table:", err)
+    } else if (status === "shipped" && order.status === "processing") {
+      // Deduct inventory when order is shipped
+      for (const item of order.items) {
+        await updateProductStock(item.product_id, -item.quantity, "sold", `Sold in order #${orderId}`)
+      }
+
+      // Update expected delivery date
+      const deliveryDate = new Date()
+      deliveryDate.setDate(deliveryDate.getDate() + 1) // 1 day from now for shipping
+
+      await supabase
+        .from("orders")
+        .update({
+          expected_delivery_date: deliveryDate.toISOString(),
+        })
+        .eq("id", orderId)
+    } else if (status === "returned" && order.status === "delivered") {
+      // Return inventory when order is returned after delivery
+      for (const item of order.items) {
+        await updateProductStock(item.product_id, item.quantity, "returned", `Returned from order #${orderId}`)
+      }
     }
 
-    // If both fail, return mock data
-    const mockOrder = {
-      id: orderId,
-      status,
-      updated_at: new Date().toISOString(),
+    // Create notifications
+    let notificationTitle = ""
+    let notificationMessage = ""
+    let recipientId = ""
+
+    switch (status) {
+      case "confirmed":
+        notificationTitle = "Order Confirmed"
+        notificationMessage = `Your order #${orderId.slice(0, 8)} has been confirmed.`
+        recipientId = order.retailer_id
+        break
+      case "processing":
+        notificationTitle = "Order Processing"
+        notificationMessage = `Your order #${orderId.slice(0, 8)} is now being processed.`
+        recipientId = order.retailer_id
+        break
+      case "shipped":
+        notificationTitle = "Order Shipped"
+        notificationMessage = `Your order #${orderId.slice(0, 8)} has been shipped.`
+        recipientId = order.retailer_id
+        break
+      case "delivered":
+        notificationTitle = "Order Delivered"
+        notificationMessage = `Your order #${orderId.slice(0, 8)} has been delivered.`
+        recipientId = order.retailer_id
+        break
+      case "cancelled":
+        if (userRole === "retailer") {
+          notificationTitle = "Order Cancelled"
+          notificationMessage = `Order #${orderId.slice(0, 8)} has been cancelled by the retailer.`
+          recipientId = order.wholesaler_id
+        } else {
+          notificationTitle = "Order Cancelled"
+          notificationMessage = `Your order #${orderId.slice(0, 8)} has been cancelled by the wholesaler.`
+          recipientId = order.retailer_id
+        }
+        break
+      case "returned":
+        notificationTitle = "Order Returned"
+        notificationMessage = `Order #${orderId.slice(0, 8)} has been marked as returned.`
+        recipientId = userRole === "retailer" ? order.wholesaler_id : order.retailer_id
+        break
     }
 
-    return { data: mockOrder, error: null }
+    if (notificationTitle && recipientId) {
+      await createNotification({
+        user_id: recipientId,
+        title: notificationTitle,
+        message: notificationMessage,
+        type: "order",
+        reference_id: orderId,
+      })
+    }
+
+    return { success: true, error: null }
   } catch (error) {
     console.error("Error updating order status:", error)
-    return { data: null, error }
+    return { success: false, error }
   }
 }
 
-/**
- * Cancel an order
- */
-export async function cancelOrder(orderId: string, reason: string) {
+// Update payment status
+export async function updatePaymentStatus(
+  orderId: string,
+  paymentStatus: string,
+): Promise<{ success: boolean; error: any }> {
   try {
-    // Try with lowercase table names first
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .update({
-          status: "cancelled",
-          cancellation_reason: reason,
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq("id", orderId)
-        .select()
-        .single()
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        payment_status: paymentStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
 
-      if (!error) {
-        return { data, error }
-      }
-    } catch (err) {
-      console.log("Error updating 'orders' table:", err)
+    if (error) {
+      throw error
     }
 
-    // If that fails, try with capitalized table names
-    try {
-      const { data, error } = await supabase
-        .from("Orders")
-        .update({
-          status: "cancelled",
-          cancellation_reason: reason,
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq("id", orderId)
-        .select()
-        .single()
+    // Get order details for notification
+    const { data: order } = await getOrderById(orderId)
 
-      if (!error) {
-        return { data, error }
-      }
-    } catch (err) {
-      console.log("Error updating 'Orders' table:", err)
+    if (order) {
+      // Create notification for payment status change
+      await createNotification({
+        user_id: order.retailer_id,
+        title: "Payment Status Updated",
+        message: `Payment for order #${orderId.slice(0, 8)} is now ${paymentStatus}.`,
+        type: "payment",
+        reference_id: orderId,
+      })
+
+      await createNotification({
+        user_id: order.wholesaler_id,
+        title: "Payment Status Updated",
+        message: `Payment for order #${orderId.slice(0, 8)} is now ${paymentStatus}.`,
+        type: "payment",
+        reference_id: orderId,
+      })
     }
 
-    // If both fail, return mock data
-    const mockOrder = {
-      id: orderId,
-      status: "cancelled",
-      cancellation_reason: reason,
-      cancelled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    return { data: mockOrder, error: null }
+    return { success: true, error: null }
   } catch (error) {
-    console.error("Error cancelling order:", error)
-    return { data: null, error }
+    console.error("Error updating payment status:", error)
+    return { success: false, error }
   }
 }
 
-/**
- * Get order statistics
- */
-export async function getOrderStatistics(userId: string, role: string) {
+// Get order statistics for a user
+export async function getOrderStatistics(userId: string, role: string): Promise<{ data: any | null; error: any }> {
   try {
     const roleField = role === "retailer" ? "retailer_id" : "wholesaler_id"
-    let totalCount = 0
-    let pendingCount = 0
-    let completedCount = 0
-    let cancelledCount = 0
 
-    // Try with lowercase table names first
-    try {
-      // Get total orders
-      const totalResult = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
+    // Get total orders
+    const { count: totalOrders, error: countError } = await supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq(roleField, userId)
 
-      // Get pending orders
-      const pendingResult = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", "pending")
-
-      // Get completed orders
-      const completedResult = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", "completed")
-
-      // Get cancelled orders
-      const cancelledResult = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", "cancelled")
-
-      if (!totalResult.error && !pendingResult.error && !completedResult.error && !cancelledResult.error) {
-        totalCount = totalResult.count || 0
-        pendingCount = pendingResult.count || 0
-        completedCount = completedResult.count || 0
-        cancelledCount = cancelledResult.count || 0
-        return { totalCount, pendingCount, completedCount, cancelledCount }
-      }
-    } catch (err) {
-      console.log("Error querying 'orders' table for statistics:", err)
+    if (countError) {
+      throw countError
     }
 
-    // If that fails, try with capitalized table names
-    try {
-      // Get total orders
-      const totalResult = await supabase
-        .from("Orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
+    // Get orders by status
+    const statuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "returned"]
+    const ordersByStatus: Record<string, number> = {}
 
-      // Get pending orders
-      const pendingResult = await supabase
-        .from("Orders")
-        .select("*", { count: "exact", head: true })
+    for (const status of statuses) {
+      const { count, error } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
         .eq(roleField, userId)
-        .eq("status", "pending")
+        .eq("status", status)
 
-      // Get completed orders
-      const completedResult = await supabase
-        .from("Orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", "completed")
-
-      // Get cancelled orders
-      const cancelledResult = await supabase
-        .from("Orders")
-        .select("*", { count: "exact", head: true })
-        .eq(roleField, userId)
-        .eq("status", "cancelled")
-
-      if (!totalResult.error && !pendingResult.error && !completedResult.error && !cancelledResult.error) {
-        totalCount = totalResult.count || 0
-        pendingCount = pendingResult.count || 0
-        completedCount = completedResult.count || 0
-        cancelledCount = cancelledResult.count || 0
-        return { totalCount, pendingCount, completedCount, cancelledCount }
+      if (error) {
+        throw error
       }
-    } catch (err) {
-      console.log("Error querying 'Orders' table for statistics:", err)
+
+      ordersByStatus[status] = count || 0
     }
 
-    // If both fail, return mock data
+    // Get total spent/earned
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("total_amount")
+      .eq(roleField, userId)
+      .eq("status", "delivered")
+
+    if (ordersError) {
+      throw ordersError
+    }
+
+    const totalAmount = orders.reduce((sum, order) => sum + order.total_amount, 0)
+
+    // Get recent orders
+    const { data: recentOrders, error: recentError } = await supabase
+      .from("orders")
+      .select(
+        `
+        id,
+        status,
+        total_amount,
+        created_at,
+        retailer:users!retailer_id(name, business_name),
+        wholesaler:users!wholesaler_id(name, business_name)
+      `,
+      )
+      .eq(roleField, userId)
+      .order("created_at", { ascending: false })
+      .limit(5)
+
+    if (recentError) {
+      throw recentError
+    }
+
     return {
-      totalCount: 10,
-      pendingCount: 3,
-      completedCount: 5,
-      cancelledCount: 2,
+      data: {
+        totalOrders,
+        ordersByStatus,
+        totalAmount,
+        recentOrders,
+      },
+      error: null,
     }
   } catch (error) {
-    console.error("Error fetching order statistics:", error)
-    return {
-      totalCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      cancelledCount: 0,
-    }
+    console.error("Error getting order statistics:", error)
+    return { data: null, error }
   }
+}
+
+// Get order timeline events
+export async function getOrderTimeline(orderId: string): Promise<{ data: any[] | null; error: any }> {
+  try {
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("status_history, created_at")
+      .eq("id", orderId)
+      .single()
+
+    if (orderError) {
+      throw orderError
+    }
+
+    // Start with order creation as first event
+    const timeline = [
+      {
+        status: "created",
+        timestamp: order.created_at,
+        title: "Order Created",
+        description: "Your order has been placed successfully",
+      },
+    ]
+
+    // Add status history events
+    if (order.status_history && Array.isArray(order.status_history)) {
+      order.status_history.forEach((event: any) => {
+        let title = ""
+        let description = ""
+
+        switch (event.status) {
+          case "pending":
+            title = "Order Pending"
+            description = "Waiting for confirmation from wholesaler"
+            break
+          case "confirmed":
+            title = "Order Confirmed"
+            description = "Your order has been confirmed"
+            break
+          case "processing":
+            title = "Order Processing"
+            description = "Your order is being prepared"
+            break
+          case "shipped":
+            title = "Order Shipped"
+            description = "Your order is on the way"
+            break
+          case "delivered":
+            title = "Order Delivered"
+            description = "Your order has been delivered"
+            break
+          case "cancelled":
+            title = "Order Cancelled"
+            description = event.reason || "Order has been cancelled"
+            break
+          case "returned":
+            title = "Order Returned"
+            description = event.reason || "Order has been returned"
+            break
+        }
+
+        timeline.push({
+          status: event.status,
+          timestamp: event.timestamp,
+          title,
+          description,
+          updatedBy: event.role,
+          reason: event.reason,
+        })
+      })
+    }
+
+    // Sort by timestamp
+    timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    return { data: timeline, error: null }
+  } catch (error) {
+    console.error("Error getting order timeline:", error)
+    return { data: null, error }
+  }
+}
+
+// Generate invoice for an order
+export async function generateOrderInvoice(orderId: string): Promise<{ data: any | null; error: any }> {
+  try {
+    const { data: order, error: orderError } = await getOrderById(orderId)
+
+    if (orderError || !order) {
+      throw orderError || new Error("Order not found")
+    }
+
+    // In a real application, you would generate a PDF invoice here
+    // For now, we'll just return the order data
+    const invoiceData = {
+      invoiceNumber: `INV-${order.id.slice(0, 8).toUpperCase()}`,
+      orderNumber: order.id,
+      date: new Date().toISOString(),
+      dueDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(),
+      customer: {
+        name: order.retailer.business_name || order.retailer.name,
+        address: order.retailer.address,
+        city: order.retailer.city,
+        state: order.retailer.state,
+        pincode: order.retailer.pincode,
+        phone: order.retailer.phone,
+      },
+      seller: {
+        name: order.wholesaler.business_name || order.wholesaler.name,
+        address: order.wholesaler.address,
+        city: order.wholesaler.city,
+        state: order.wholesaler.state,
+        pincode: order.wholesaler.pincode,
+        phone: order.wholesaler.phone,
+      },
+      items: order.items.map((item: any) => ({
+        name: item.product.name,
+        quantity: item.quantity,
+        price: item.unit_price,
+        total: item.subtotal,
+      })),
+      subtotal: order.total_amount,
+      tax: order.total_amount * 0.18, // Assuming 18% GST
+      total: order.total_amount * 1.18,
+      notes: "Thank you for your business!",
+    }
+
+    return { data: invoiceData, error: null }
+  } catch (error) {
+    console.error("Error generating invoice:", error)
+    return { data: null, error }
+  }
+}
+
+// Cancel an order
+export async function cancelOrder(
+  orderId: string,
+  userId: string,
+  userRole: string,
+  reason: string,
+): Promise<{ success: boolean; error: any }> {
+  try {
+    return await updateOrderStatus(orderId, "cancelled", userId, userRole, reason)
+  } catch (error) {
+    console.error("Error cancelling order:", error)
+    return { success: false, error }
+  }
+}
+
+// Get orders by retailer (alias for getRetailerOrders for compatibility)
+export async function getOrdersByRetailer(retailerId: string): Promise<{ data: Order[] | null; error: any }> {
+  return await getRetailerOrders(retailerId)
+}
+
+// Get orders by wholesaler (alias for getWholesalerOrders for compatibility)
+export async function getOrdersByWholesaler(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
+  return await getWholesalerOrders(wholesalerId)
 }

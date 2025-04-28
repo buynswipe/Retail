@@ -138,21 +138,6 @@ CREATE TABLE IF NOT EXISTS landing_analytics (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Product Reviews Table
-CREATE TABLE IF NOT EXISTS product_reviews (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  product_id UUID NOT NULL REFERENCES products(id),
-  retailer_id UUID NOT NULL REFERENCES users(id),
-  order_item_id UUID REFERENCES order_items(id),
-  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-  review_text TEXT,
-  is_verified BOOLEAN DEFAULT FALSE,
-  wholesaler_response TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(product_id, retailer_id, order_item_id)
-);
-
 -- Insert default admin user
 INSERT INTO users (phone_number, role, name, is_approved)
 VALUES ('1234567890', 'admin', 'Admin User', TRUE)
@@ -173,7 +158,6 @@ ALTER TABLE delivery_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_reviews ENABLE ROW LEVEL SECURITY;
 
 -- Create policies
 -- Users can read their own data
@@ -220,43 +204,6 @@ CREATE POLICY payments_read_involved ON payments
     collected_by = auth.uid() OR
     EXISTS (
       SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
-
--- Product reviews can be read by anyone
-CREATE POLICY product_reviews_read_all ON product_reviews
-  FOR SELECT USING (true);
-
--- Retailers can create reviews for products they've purchased
-CREATE POLICY retailers_create_reviews ON product_reviews
-  FOR INSERT WITH CHECK (
-    retailer_id = auth.uid() AND
-    EXISTS (
-      SELECT 1 FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      WHERE oi.product_id = product_reviews.product_id
-      AND o.retailer_id = auth.uid()
-      AND o.status = 'delivered'
-    )
-  );
-
--- Retailers can update their own reviews
-CREATE POLICY retailers_update_reviews ON product_reviews
-  FOR UPDATE USING (retailer_id = auth.uid());
-
--- Wholesalers can respond to reviews for their products
-CREATE POLICY wholesalers_respond_to_reviews ON product_reviews
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM products p
-      WHERE p.id = product_reviews.product_id
-      AND p.wholesaler_id = auth.uid()
-    )
-  ) WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM products p
-      WHERE p.id = product_reviews.product_id
-      AND p.wholesaler_id = auth.uid()
     )
   );
 

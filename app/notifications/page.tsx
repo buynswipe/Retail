@@ -5,234 +5,216 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TranslationProvider, useTranslation } from "../components/translation-provider"
 import Navbar from "../components/navbar"
-import { Bell, CheckCircle, Trash2, ArrowLeft } from "lucide-react"
+import { Bell, Trash2, CheckCircle, Filter, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useAuth } from "@/lib/auth-context"
 import { useNotifications } from "@/lib/notification-context"
-import { deleteNotification } from "@/lib/notification-service"
+import { format } from "date-fns"
 import Link from "next/link"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "@/components/ui/use-toast"
-import { Toaster } from "@/components/ui/toaster"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 function NotificationsContent() {
   const { t } = useTranslation()
-  const { user } = useAuth()
-  const { notifications, markAsRead, markAllAsRead, refreshNotifications } = useNotifications()
-  const [activeTab, setActiveTab] = useState("all")
-  const [notificationToDelete, setNotificationToDelete] = useState<string | null>(null)
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications()
+  const [activeTab, setActiveTab] = useState<string>("all")
+  const [activeFilter, setActiveFilter] = useState<string>("all")
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "order":
-        return "🛒"
-      case "payment":
-        return "💰"
-      case "chat":
-        return "💬"
-      case "delivery":
-        return "🚚"
-      default:
-        return "📢"
-    }
-  }
+  // Filter notifications based on active tab and filter
+  const filteredNotifications = notifications.filter((notification) => {
+    // Filter by read/unread status
+    if (activeTab === "unread" && notification.is_read) return false
+    if (activeTab === "read" && !notification.is_read) return false
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
+    // Filter by notification type
+    if (activeFilter !== "all" && notification.type !== activeFilter) return false
 
+    return true
+  })
+
+  // Handle mark as read
   const handleMarkAsRead = async (notificationId: string) => {
     await markAsRead(notificationId)
   }
 
+  // Handle mark all as read
   const handleMarkAllAsRead = async () => {
     await markAllAsRead()
   }
 
-  const handleDeleteNotification = async () => {
-    if (!notificationToDelete) return
+  // Handle delete notification
+  const handleDeleteNotification = async (notificationId: string) => {
+    await deleteNotification(notificationId)
+  }
 
-    try {
-      const { success, error } = await deleteNotification(notificationToDelete)
-      if (success) {
-        toast({
-          title: "Success",
-          description: "Notification deleted successfully.",
-        })
-        await refreshNotifications()
-      } else {
-        throw error
-      }
-    } catch (error) {
-      console.error("Error deleting notification:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete notification. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setNotificationToDelete(null)
+  // Get icon color based on notification type
+  const getIconColor = (type: string): string => {
+    switch (type) {
+      case "order":
+        return "text-blue-500 bg-blue-50"
+      case "payment":
+        return "text-green-500 bg-green-50"
+      case "chat":
+        return "text-purple-500 bg-purple-50"
+      case "delivery":
+        return "text-orange-500 bg-orange-50"
+      case "system":
+        return "text-gray-500 bg-gray-50"
+      default:
+        return "text-gray-500 bg-gray-50"
     }
   }
 
-  const filteredNotifications = notifications.filter((notification) => {
-    if (activeTab === "all") return true
-    if (activeTab === "unread") return !notification.is_read
-    return notification.type === activeTab
-  })
+  // Get badge color based on notification priority
+  const getBadgeColor = (priority: string): string => {
+    switch (priority) {
+      case "high":
+        return "bg-red-500"
+      case "medium":
+        return "bg-yellow-500"
+      case "low":
+        return "bg-blue-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
 
-  const getDashboardLink = () => {
-    if (user?.role === "retailer") return "/retailer/dashboard"
-    if (user?.role === "wholesaler") return "/wholesaler/dashboard"
-    if (user?.role === "delivery") return "/delivery/dashboard"
-    if (user?.role === "admin") return "/admin/dashboard"
-    return "/"
+  // Format notification date
+  const formatNotificationDate = (dateString: string): string => {
+    return format(new Date(dateString), "MMM d, yyyy h:mm a")
   }
 
   return (
     <div className="container mx-auto max-w-4xl">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Notifications</h1>
-        <Button asChild variant="outline">
-          <Link href={getDashboardLink()}>
-            <ArrowLeft className="mr-2 h-5 w-5" />
-            Back to Dashboard
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/notification-preferences">Preferences</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/dashboard">
+              <ArrowLeft className="mr-2 h-5 w-5" />
+              Back
+            </Link>
+          </Button>
+        </div>
       </div>
 
-      <Card className="mb-8">
+      <Card className="mb-6">
         <CardHeader className="pb-3">
           <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center">
-              <Bell className="mr-2 h-5 w-5" />
-              All Notifications
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Mark all as read
-            </Button>
+            <CardTitle>Your Notifications</CardTitle>
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filter
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setActiveFilter("all")}>All Types</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveFilter("order")}>Orders</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveFilter("payment")}>Payments</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveFilter("delivery")}>Delivery</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveFilter("chat")}>Chat</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveFilter("system")}>System</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Mark All Read
+              </Button>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="px-6 pt-2">
-            <TabsList>
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="unread">Unread</TabsTrigger>
-              <TabsTrigger value="order">Orders</TabsTrigger>
-              <TabsTrigger value="payment">Payments</TabsTrigger>
-              <TabsTrigger value="delivery">Delivery</TabsTrigger>
-              <TabsTrigger value="chat">Chat</TabsTrigger>
+              <TabsTrigger value="unread">Unread ({unreadCount})</TabsTrigger>
+              <TabsTrigger value="read">Read</TabsTrigger>
             </TabsList>
           </Tabs>
+        </CardHeader>
 
-          <div className="mt-4 divide-y">
-            {filteredNotifications.length > 0 ? (
-              filteredNotifications.map((notification) => (
+        <CardContent>
+          {filteredNotifications.length > 0 ? (
+            <div className="space-y-1">
+              {filteredNotifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 hover:bg-gray-50 transition-colors ${!notification.is_read ? "bg-blue-50" : ""}`}
+                  className={`flex items-start gap-3 p-4 rounded-lg ${!notification.is_read ? "bg-blue-50" : ""}`}
                 >
-                  <div className="flex gap-3">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl">
-                      {getNotificationIcon(notification.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{notification.message}</p>
-                          <p className="text-sm text-gray-500 mt-1">{formatDate(notification.created_at)}</p>
-                        </div>
-                        <div className="flex items-center space-x-2 ml-4">
-                          {!notification.is_read && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => handleMarkAsRead(notification.id)}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                              <span className="sr-only">Mark as read</span>
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                            onClick={() => setNotificationToDelete(notification.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete</span>
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="mt-2">
-                        <Badge
-                          className={`${
-                            notification.type === "order"
-                              ? "bg-blue-500"
-                              : notification.type === "payment"
-                                ? "bg-green-500"
-                                : notification.type === "delivery"
-                                  ? "bg-orange-500"
-                                  : notification.type === "chat"
-                                    ? "bg-purple-500"
-                                    : "bg-gray-500"
-                          }`}
-                        >
+                  <div className={`mt-0.5 rounded-full p-2 ${getIconColor(notification.type)}`}>
+                    <Bell className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge className={getBadgeColor(notification.priority)}>
                           {notification.type.charAt(0).toUpperCase() + notification.type.slice(1)}
                         </Badge>
-                        {notification.priority === "high" && <Badge className="ml-2 bg-red-500">High Priority</Badge>}
+                        {!notification.is_read && (
+                          <span className="inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                        )}
                       </div>
+                      <span className="text-xs text-gray-500">{formatNotificationDate(notification.created_at)}</span>
+                    </div>
+                    <p className="text-sm">{notification.message}</p>
+                    {notification.message_hindi && (
+                      <p className="text-sm text-gray-500">{notification.message_hindi}</p>
+                    )}
+                    <div className="flex justify-end gap-2 mt-2">
+                      {!notification.is_read && (
+                        <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.id)}>
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Mark as Read
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => handleDeleteNotification(notification.id)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </Button>
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Bell className="h-12 w-12 text-gray-300 mb-4" />
-                <p className="text-gray-500">No notifications found</p>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Bell className="h-12 w-12 text-gray-300 mb-4" />
+              <p className="text-gray-500">No notifications found</p>
+              {activeTab !== "all" || activeFilter !== "all" ? (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setActiveTab("all")
+                    setActiveFilter("all")
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : null}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!notificationToDelete} onOpenChange={(open) => !open && setNotificationToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Notification</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this notification? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteNotification} className="bg-red-500 hover:bg-red-600">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Toaster />
+      <div className="text-center text-sm text-gray-500">
+        <p>
+          Manage your notification preferences{" "}
+          <Link href="/notification-preferences" className="text-blue-500 hover:underline">
+            here
+          </Link>
+          .
+        </p>
+      </div>
     </div>
   )
 }

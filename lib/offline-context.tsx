@@ -1,108 +1,136 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
-import { offlineStorage } from "./offline-storage"
-import { offlineSync } from "./offline-sync"
-import { logger } from "./logger"
+import { createContext, useContext, useState, useEffect } from "react"
+import { checkOnlineStatus, requestBackgroundSync } from "./service-worker"
+import offlineSupabase from "./offline-supabase-client"
+import indexedDBService from "./indexed-db"
 
 interface OfflineContextType {
   isOnline: boolean
-  isSyncing: boolean
-  queueLength: number
-  storageUsage: {
-    used: number
-    total: number
-    percentage: number
-  }
-  syncData: () => Promise<boolean>
+  hasPendingOperations: boolean
+  pendingOperationsCount: number
+  syncPendingOperations: () => Promise<any>
+  lastSyncTime: Date | null
 }
 
-const OfflineContext = createContext<OfflineContextType | undefined>(undefined)
+const OfflineContext = createContext<OfflineContextType>({
+  isOnline: true,
+  hasPendingOperations: false,
+  pendingOperationsCount: 0,
+  syncPendingOperations: async () => ({}),
+  lastSyncTime: null,
+})
 
-export function OfflineProvider({ children }: { children: React.ReactNode }) {
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true)
-  const [isSyncing, setIsSyncing] = useState<boolean>(false)
-  const [queueLength, setQueueLength] = useState<number>(0)
-  const [storageUsage, setStorageUsage] = useState({
-    used: 0,
-    total: 50, // Default 50MB
-    percentage: 0,
-  })
+export const useOffline = () => useContext(OfflineContext)
 
+export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isOnline, setIsOnline] = useState(true)
+  const [pendingOperations, setPendingOperations] = useState<any[]>([])
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
+
+  // Check online status on mount and when it changes
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true)
-      logger.info("Device is online")
+    const updateOnlineStatus = () => {
+      const online = checkOnlineStatus()
+      setIsOnline(online)
+
+      // If we just came back online, try to sync
+      if (online && pendingOperations.length > 0) {
+        requestBackgroundSync()
+      }
     }
 
-    const handleOffline = () => {
-      setIsOnline(false)
-      logger.info("Device is offline")
+    // Set initial status
+    updateOnlineStatus()
+
+    // Add event listeners for online/offline events
+    window.addEventListener("online", updateOnlineStatus)
+    window.addEventListener("offline", updateOnlineStatus)
+
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus)
+      window.removeEventListener("offline", updateOnlineStatus)
+    }
+  }, [pendingOperations.length])
+
+  // Check for pending operations periodically
+  useEffect(() => {
+    const checkPendingOperations = async () => {
+      try {
+        const operations = await indexedDBService.getPendingOperations()
+        setPendingOperations(operations)
+      } catch (error) {
+        console.error("Error checking pending operations:", error)
+      }
     }
 
-    if (typeof window !== "undefined") {
-      // Set initial values
-      setIsOnline(navigator.onLine)
-      updateSyncStatus()
-      updateStorageUsage()
+    // Check immediately
+    checkPendingOperations()
 
-      // Add event listeners
-      window.addEventListener("online", handleOnline)
-      window.addEventListener("offline", handleOffline)
+    // Then check periodically
+    const interval = setInterval(checkPendingOperations, 30000) // Check every 30 seconds
 
-      // Set up interval to update status
-      const statusInterval = setInterval(() => {
-        updateSyncStatus()
-        updateStorageUsage()
-      }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
-      return () => {
-        window.removeEventListener("online", handleOnline)
-        window.removeEventListener("offline", handleOffline)
-        clearInterval(statusInterval)
+  // Listen for sync success messages from service worker
+  useEffect(() => {
+    const handleSyncMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "SYNC_SUCCESS") {
+        // Refresh pending operations
+        indexedDBService.getPendingOperations().then((operations) => {
+          setPendingOperations(operations)
+          setLastSyncTime(new Date())
+        })
+      }
+    }
+
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", handleSyncMessage)
+    }
+
+    return () => {
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", handleSyncMessage)
       }
     }
   }, [])
 
-  const updateSyncStatus = () => {
-    const status = offlineSync.getSyncStatus()
-    setIsSyncing(status.isSyncing)
-    setQueueLength(status.queueLength)
-  }
+  // Function to manually sync pending operations
+  const syncPendingOperations = async () => {
+    if (!isOnline) {
+      return { success: false, message: "Device is offline" }
+    }
 
-  const updateStorageUsage = () => {
-    setStorageUsage(offlineStorage.getStorageUsage())
-  }
-
-  const syncData = async () => {
-    if (!isOnline || isSyncing) return false
-
-    setIsSyncing(true)
     try {
-      const result = await offlineSync.syncData()
-      updateSyncStatus()
+      const result = await offlineSupabase.syncPendingOperations()
+
+      // Refresh pending operations
+      const operations = await indexedDBService.getPendingOperations()
+      setPendingOperations(operations)
+
+      // Update last sync time
+      setLastSyncTime(new Date())
+
       return result
-    } finally {
-      setIsSyncing(false)
+    } catch (error) {
+      console.error("Error syncing pending operations:", error)
+      return { success: false, error }
     }
   }
 
-  const value = {
-    isOnline,
-    isSyncing,
-    queueLength,
-    storageUsage,
-    syncData,
-  }
-
-  return <OfflineContext.Provider value={value}>{children}</OfflineContext.Provider>
-}
-
-export function useOffline() {
-  const context = useContext(OfflineContext)
-  if (context === undefined) {
-    throw new Error("useOffline must be used within an OfflineProvider")
-  }
-  return context
+  return (
+    <OfflineContext.Provider
+      value={{
+        isOnline,
+        hasPendingOperations: pendingOperations.length > 0,
+        pendingOperationsCount: pendingOperations.length,
+        syncPendingOperations,
+        lastSyncTime,
+      }}
+    >
+      {children}
+    </OfflineContext.Provider>
+  )
 }

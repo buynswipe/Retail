@@ -1,150 +1,129 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, type ReactNode, useState, useEffect } from "react"
 
-// Define available languages
-export type Language = "en" | "hi"
+type Language = "en" | "hi"
 
-// Define translation context type
 interface TranslationContextType {
-  t: (key: string) => string
   language: Language
+  t: (key: string) => string
   setLanguage: (lang: Language) => void
 }
 
-// Create context with default values
-const TranslationContext = createContext<TranslationContextType>({
-  t: (key: string) => key,
-  language: "en",
-  setLanguage: () => {},
-})
-
-// Translations
-const translations: Record<Language, Record<string, string>> = {
+const translations = {
   en: {
-    "login.title": "Login",
+    // Landing page
+    "hero.headline": "Power Your FMCG Business",
+    "hero.subheadline": "Seamless ordering and delivery for retailers, wholesalers, and delivery partners",
+    "cta.join": "Join Now",
+    "cta.download": "Download App",
+    "benefits.retailer.title": "Retailers",
+    "benefits.retailer.description": "Order, track, save time",
+    "benefits.wholesaler.title": "Wholesalers",
+    "benefits.wholesaler.description": "Grow sales, easy payments",
+    "benefits.delivery.title": "Delivery Partners",
+    "benefits.delivery.description": "Earn per delivery",
+    "how.title": "How It Works",
+    "how.step1": "Join",
+    "how.step2": "Order",
+    "how.step3": "Deliver",
+    "how.step4": "Track",
+    "learn.more": "Learn More",
+
+    // Auth
+    "login.title": "Log In",
     "signup.title": "Sign Up",
     phone: "Phone Number",
-    email: "Email",
-    password: "Password",
+    otp: "OTP",
     "send.otp": "Send OTP",
-    otp: "Verification Code",
     verify: "Verify",
-    login: "Login",
-    "sign.up": "Sign Up",
-    "sign.out": "Sign Out",
-    home: "Home",
-    dashboard: "Dashboard",
-    browse: "Browse Products",
-    orders: "Orders",
-    products: "Products",
-    assignments: "Assignments",
-    "active.deliveries": "Active Deliveries",
-    "delivery.history": "Delivery History",
-    users: "Users",
-    roles: "Roles",
-    analytics: "Analytics",
-    "system.status": "System Status",
-    profile: "Profile",
-    notifications: "Notifications",
-    name: "Name",
-    "business.name": "Business Name",
-    "pin.code": "PIN Code",
-    "gst.number": "GST Number",
-    "vehicle.type": "Vehicle Type",
-    "bank.details": "Bank Details",
-    "account.number": "Account Number",
-    "ifsc.code": "IFSC Code",
-    save: "Save",
-    cancel: "Cancel",
-    "profile.updated": "Profile Updated",
-    "error.occurred": "An error occurred",
-    "try.again": "Please try again",
-    "welcome.message": "Welcome to RetailBandhu",
-    "hero.subtitle": "Connecting retailers, wholesalers, and delivery partners",
-    "get.started": "Get Started",
-    "learn.more": "Learn More",
-    "benefits.title": "Benefits",
-    "how.it.works.title": "How It Works",
-    "footer.copyright": "© 2023 RetailBandhu. All rights reserved.",
+    continue: "Continue",
+
+    // Navigation
+    "nav.home": "Home",
+    "nav.orders": "Orders",
+    "nav.chat": "Chat",
+    "nav.tax": "Tax",
+
+    // Footer
+    "footer.privacy": "Privacy Policy",
+    "footer.terms": "Terms of Service",
+    "footer.contact": "Contact Us",
   },
   hi: {
-    "login.title": "लॉगिन",
+    // Landing page
+    "hero.headline": "अपने FMCG व्यवसाय को सशक्त करें",
+    "hero.subheadline": "रिटेलर, थोक विक्रेता, और डिलीवरी पार्टनर के लिए आसान ऑर्डरिंग और डिलीवरी",
+    "cta.join": "अभी जुड़ें",
+    "cta.download": "ऐप डाउनलोड करें",
+    "benefits.retailer.title": "रिटेलर्स",
+    "benefits.retailer.description": "ऑर्डर करें, ट्रैक करें, समय बचाएं",
+    "benefits.wholesaler.title": "थोक विक्रेता",
+    "benefits.wholesaler.description": "बिक्री बढ़ाएं, आसान भुगतान",
+    "benefits.delivery.title": "डिलीवरी पार्टनर",
+    "benefits.delivery.description": "प्रति डिलीवरी कमाई",
+    "how.title": "यह कैसे काम करता है",
+    "how.step1": "जुड़ें",
+    "how.step2": "ऑर्डर करें",
+    "how.step3": "डिलीवर करें",
+    "how.step4": "ट्रैक करें",
+    "learn.more": "और जानें",
+
+    // Auth
+    "login.title": "लॉग इन",
     "signup.title": "साइन अप",
     phone: "फोन नंबर",
-    email: "ईमेल",
-    password: "पासवर्ड",
-    "send.otp": "OTP भेजें",
-    otp: "वेरिफिकेशन कोड",
-    verify: "वेरिफाई करें",
-    login: "लॉगिन",
-    "sign.up": "साइन अप",
-    "sign.out": "साइन आउट",
-    home: "होम",
-    dashboard: "डैशबोर्ड",
-    browse: "प्रोडक्ट्स ब्राउज़ करें",
-    orders: "ऑर्डर्स",
-    products: "प्रोडक्ट्स",
-    assignments: "असाइनमेंट्स",
-    "active.deliveries": "एक्टिव डिलीवरी",
-    "delivery.history": "डिलीवरी हिस्ट्री",
-    users: "यूजर्स",
-    roles: "रोल्स",
-    analytics: "एनालिटिक्स",
-    "system.status": "सिस्टम स्टेटस",
-    profile: "प्रोफाइल",
-    notifications: "नोटिफिकेशन्स",
-    name: "नाम",
-    "business.name": "बिजनेस नाम",
-    "pin.code": "पिन कोड",
-    "gst.number": "GST नंबर",
-    "vehicle.type": "वाहन प्रकार",
-    "bank.details": "बैंक विवरण",
-    "account.number": "अकाउंट नंबर",
-    "ifsc.code": "IFSC कोड",
-    save: "सेव",
-    cancel: "कैंसल",
-    "profile.updated": "प्रोफाइल अपडेट हो गया",
-    "error.occurred": "एक त्रुटि हुई",
-    "try.again": "कृपया पुनः प्रयास करें",
-    "welcome.message": "रिटेल बंधु में आपका स्वागत है",
-    "hero.subtitle": "रिटेलर्स, होलसेलर्स और डिलीवरी पार्टनर्स को जोड़ना",
-    "get.started": "शुरू करें",
-    "learn.more": "और जानें",
-    "benefits.title": "लाभ",
-    "how.it.works.title": "यह कैसे काम करता है",
-    "footer.copyright": "© 2023 रिटेल बंधु. सर्वाधिकार सुरक्षित।",
+    otp: "ओटीपी",
+    "send.otp": "ओटीपी भेजें",
+    verify: "सत्यापित करें",
+    continue: "जारी रखें",
+
+    // Navigation
+    "nav.home": "होम",
+    "nav.orders": "ऑर्डर",
+    "nav.chat": "चैट",
+    "nav.tax": "टैक्स",
+
+    // Footer
+    "footer.privacy": "गोपनीयता नीति",
+    "footer.terms": "सेवा की शर्तें",
+    "footer.contact": "संपर्क करें",
   },
 }
 
-// Translation Provider component
-export function TranslationProvider({ children }: { children: React.ReactNode }) {
-  // Get initial language from localStorage or default to English
+const TranslationContext = createContext<TranslationContextType | undefined>(undefined)
+
+export function TranslationProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<Language>("en")
 
-  // Load language preference from localStorage on component mount
   useEffect(() => {
+    // Get language preference from localStorage if available
     const savedLanguage = localStorage.getItem("language") as Language
     if (savedLanguage && (savedLanguage === "en" || savedLanguage === "hi")) {
       setLanguage(savedLanguage)
     }
   }, [])
 
-  // Save language preference to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem("language", language)
-  }, [language])
-
-  // Translation function
   const t = (key: string): string => {
-    return translations[language][key] || key
+    return translations[language][key as keyof (typeof translations)[typeof language]] || key
   }
 
-  return <TranslationContext.Provider value={{ t, language, setLanguage }}>{children}</TranslationContext.Provider>
+  const changeLanguage = (lang: Language) => {
+    setLanguage(lang)
+    localStorage.setItem("language", lang)
+  }
+
+  return (
+    <TranslationContext.Provider value={{ language, t, setLanguage: changeLanguage }}>
+      {children}
+    </TranslationContext.Provider>
+  )
 }
 
-// Custom hook to use translations
 export function useTranslation() {
-  return useContext(TranslationContext)
+  const context = useContext(TranslationContext)
+  if (context === undefined) {
+    throw new Error("useTranslation must be used within a TranslationProvider")
+  }
+  return context
 }

@@ -21,7 +21,6 @@ function RetailerDashboardContent() {
   const [wholesalers, setWholesalers] = useState<any[]>([])
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const router = useRouter()
   const { user, logout } = useAuth()
 
@@ -36,26 +35,16 @@ function RetailerDashboardContent() {
     if (!user) return
 
     setIsLoading(true)
-    setLoadError(null)
-
     try {
-      console.log("Loading orders for user:", user.id)
       const { data, error } = await getOrdersByRetailer(user.id)
-
       if (error) {
         console.error("Error loading orders:", error)
-        setLoadError(`Failed to load orders: ${error.message || "Unknown error"}`)
       } else if (data) {
-        console.log("Orders loaded:", data.length)
         // Get the 3 most recent orders
         setRecentOrders(data.slice(0, 3))
-      } else {
-        console.log("No orders found")
-        setRecentOrders([])
       }
-    } catch (error: any) {
-      console.error("Exception loading orders:", error)
-      setLoadError(`Error: ${error?.message || "Unknown error"}`)
+    } catch (error) {
+      console.error("Error loading orders:", error)
     } finally {
       setIsLoading(false)
     }
@@ -213,13 +202,6 @@ function RetailerDashboardContent() {
         {isLoading ? (
           <div className="text-center py-6">
             <p className="text-gray-500">Loading recent orders...</p>
-          </div>
-        ) : loadError ? (
-          <div className="text-center py-6">
-            <p className="text-red-500">{loadError}</p>
-            <Button onClick={loadRecentOrders} className="mt-4">
-              Retry
-            </Button>
           </div>
         ) : recentOrders.length > 0 ? (
           recentOrders.map((order) => (

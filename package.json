@@ -64,9 +64,9 @@
     "@supabase/supabase-js": "latest",
     "papaparse": "latest",
     "jspdf-autotable": "latest",
-    "react-i18next": "latest",
     "crypto": "latest",
-    "uuid": "latest"
+    "uuid": "latest",
+    "react-i18next": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

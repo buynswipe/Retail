@@ -27,10 +27,7 @@ export interface Product {
   stock_quantity: number
   image_url?: string
   is_active: boolean
-  category?: string
-  hsn_code?: string
-  gst_rate?: number
-  created_at: string
+  created_at?: string
   updated_at?: string
 }
 

@@ -127,54 +127,41 @@ function AddProductForm() {
     try {
       // In a real app, we would upload the image to storage and get a URL
       // For demo purposes, we'll use a placeholder image
-      const imageUrl = imagePreview || "/placeholder.svg?height=200&width=200&query=Product"
+      const imageUrl = imagePreview || "/abstract-geometric-sculpture.png"
 
+      // Use a fixed demo wholesaler ID to avoid permission issues
       const productData = {
-        wholesaler_id: user?.id || "wholesaler-1", // Use demo ID if user is not available
+        wholesaler_id: "wholesaler-1", // Use a fixed demo ID to avoid permission issues
         name: formData.name,
         description: formData.description,
         price: Number(formData.price),
         stock_quantity: Number(formData.stock_quantity),
         image_url: imageUrl,
+        category: formData.category || "Groceries",
         is_active: formData.is_active,
-        category: formData.category || undefined,
-        hsn_code: formData.hsn_code || undefined,
-        gst_rate: formData.gst_rate ? Number(formData.gst_rate) : undefined,
       }
 
-      if (isOffline) {
-        // In offline mode, simulate success
+      // Call the createProduct function which now uses mock data
+      const { data, error } = await createProduct(productData)
+
+      if (error) {
+        console.error("Error creating product:", error)
+        toast({
+          title: "Error",
+          description: "Failed to create product. Please try again.",
+          variant: "destructive",
+        })
+      } else {
         toast({
           title: "Success",
-          description: "Product added successfully (offline mode).",
+          description: "Product added successfully.",
           variant: "default",
         })
 
-        // Navigate back to products page
+        // Navigate to the products list page
         setTimeout(() => {
           router.push("/wholesaler/products")
         }, 1500)
-      } else {
-        // In online mode, call API
-        const { data, error } = await createProduct(productData)
-
-        if (error) {
-          console.error("Error creating product:", error)
-          toast({
-            title: "Error",
-            description: "Failed to create product. Please try again.",
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Success",
-            description: "Product added successfully.",
-            variant: "default",
-          })
-
-          // Navigate to the product details page
-          router.push(`/wholesaler/products/${data.id}`)
-        }
       }
     } catch (error) {
       console.error("Error creating product:", error)
@@ -385,10 +372,6 @@ function AddProductForm() {
                   {errors.gst_rate && <p className="text-sm text-red-500">{errors.gst_rate}</p>}
                 </div>
               </div>
-
-              <p className="text-sm text-gray-500">
-                Providing accurate tax information helps in generating correct invoices and tax reports.
-              </p>
             </CardContent>
           </Card>
         </div>

@@ -33,6 +33,50 @@ function OrdersContent() {
 
     setIsLoading(true)
     try {
+      // Check if this is a demo user ID
+      if (user.id.startsWith("user-")) {
+        // Use demo data for demo users
+        const demoOrders = [
+          {
+            id: "demo-order-1",
+            order_number: "ORD12345678",
+            retailer_id: "demo-retailer-1",
+            wholesaler_id: user.id,
+            total_amount: 2500,
+            wholesaler_payout: 2400,
+            status: "placed",
+            payment_method: "online",
+            payment_status: "pending",
+            created_at: new Date(Date.now() - 3600000).toISOString(),
+            retailer: {
+              id: "demo-retailer-1",
+              business_name: "Demo Retail Store",
+              name: "Demo Retailer",
+            },
+          },
+          {
+            id: "demo-order-2",
+            order_number: "ORD87654321",
+            retailer_id: "demo-retailer-2",
+            wholesaler_id: user.id,
+            total_amount: 3500,
+            wholesaler_payout: 3350,
+            status: "confirmed",
+            payment_method: "cod",
+            payment_status: "pending",
+            created_at: new Date(Date.now() - 7200000).toISOString(),
+            retailer: {
+              id: "demo-retailer-2",
+              business_name: "Another Retail Shop",
+              name: "Another Retailer",
+            },
+          },
+        ]
+        setOrders(demoOrders)
+        setIsLoading(false)
+        return
+      }
+
       const { data, error } = await supabase
         .from("orders")
         .select(`
@@ -43,10 +87,53 @@ function OrdersContent() {
         .order("created_at", { ascending: false })
 
       if (error) {
-        throw error
+        console.error("Error loading orders:", error)
+        toast({
+          title: "Error",
+          description: "Using demo orders instead of database data.",
+          variant: "destructive",
+        })
+        // Fall back to demo data
+        const demoOrders = [
+          {
+            id: "demo-order-1",
+            order_number: "ORD12345678",
+            retailer_id: "demo-retailer-1",
+            wholesaler_id: user.id,
+            total_amount: 2500,
+            wholesaler_payout: 2400,
+            status: "placed",
+            payment_method: "online",
+            payment_status: "pending",
+            created_at: new Date(Date.now() - 3600000).toISOString(),
+            retailer: {
+              id: "demo-retailer-1",
+              business_name: "Demo Retail Store",
+              name: "Demo Retailer",
+            },
+          },
+          {
+            id: "demo-order-2",
+            order_number: "ORD87654321",
+            retailer_id: "demo-retailer-2",
+            wholesaler_id: user.id,
+            total_amount: 3500,
+            wholesaler_payout: 3350,
+            status: "confirmed",
+            payment_method: "cod",
+            payment_status: "pending",
+            created_at: new Date(Date.now() - 7200000).toISOString(),
+            retailer: {
+              id: "demo-retailer-2",
+              business_name: "Another Retail Shop",
+              name: "Another Retailer",
+            },
+          },
+        ]
+        setOrders(demoOrders)
+      } else {
+        setOrders(data || [])
       }
-
-      setOrders(data || [])
     } catch (error) {
       console.error("Error loading orders:", error)
       toast({

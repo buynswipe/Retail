@@ -18,7 +18,11 @@ function PaymentsContent() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const [payments, setPayments] = useState<any[]>([])
-  const [statistics, setStatistics] = useState<any>(null)
+  const [statistics, setStatistics] = useState<any>({
+    total_amount: 0,
+    completed_amount: 0,
+    pending_amount: 0,
+  })
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeTab, setActiveTab] = useState("all")
@@ -159,7 +163,7 @@ function PaymentsContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Total Earnings</p>
-                  <h3 className="text-3xl font-bold">₹{statistics.total_amount.toFixed(2)}</h3>
+                  <h3 className="text-3xl font-bold">₹{(statistics.total_amount || 0).toFixed(2)}</h3>
                 </div>
                 <CreditCard className="h-8 w-8 text-blue-500" />
               </div>
@@ -171,7 +175,7 @@ function PaymentsContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Received Payments</p>
-                  <h3 className="text-3xl font-bold">₹{statistics.completed_amount.toFixed(2)}</h3>
+                  <h3 className="text-3xl font-bold">₹{(statistics.completed_amount || 0).toFixed(2)}</h3>
                 </div>
                 <CheckCircle className="h-8 w-8 text-green-500" />
               </div>
@@ -183,7 +187,7 @@ function PaymentsContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Pending Payments</p>
-                  <h3 className="text-3xl font-bold">₹{statistics.pending_amount.toFixed(2)}</h3>
+                  <h3 className="text-3xl font-bold">₹{(statistics.pending_amount || 0).toFixed(2)}</h3>
                 </div>
                 <AlertCircle className="h-8 w-8 text-yellow-500" />
               </div>
@@ -281,7 +285,7 @@ function PaymentsContent() {
                       </div>
 
                       <div className="text-right">
-                        <p className="text-lg font-semibold">₹{payment.amount.toFixed(2)}</p>
+                        <p className="text-lg font-semibold">₹{(payment.amount || 0).toFixed(2)}</p>
                         <Button asChild size="sm" variant="outline" className="mt-2">
                           <Link href={`/wholesaler/orders?id=${payment.order_id}`}>View Order</Link>
                         </Button>

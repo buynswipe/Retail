@@ -311,6 +311,9 @@ function WholesalerProductsContent() {
   const { isOffline } = useOffline()
   const router = useRouter()
 
+  // Add a key to force refresh when navigating back to this page
+  const [refreshKey, setRefreshKey] = useState(0)
+
   useEffect(() => {
     const loadProducts = async () => {
       setIsLoading(true)
@@ -326,9 +329,12 @@ function WholesalerProductsContent() {
             console.error("Error loading products:", error)
             toast({
               title: "Error",
-              description: "Failed to load products. Please try again.",
+              description: "Using demo products instead of database data.",
               variant: "destructive",
             })
+            // Fall back to demo data on error
+            const demoProducts = generateDemoProducts().filter((p) => p.wholesaler_id === "wholesaler-1")
+            setProducts(demoProducts)
           } else if (data) {
             setProducts(data)
           }
@@ -337,23 +343,31 @@ function WholesalerProductsContent() {
         console.error("Error loading products:", error)
         toast({
           title: "Error",
-          description: "Failed to load products. Please try again.",
+          description: "Using demo products instead of database data.",
           variant: "destructive",
         })
+        // Fall back to demo data on error
+        const demoProducts = generateDemoProducts().filter((p) => p.wholesaler_id === "wholesaler-1")
+        setProducts(demoProducts)
       } finally {
         setIsLoading(false)
       }
     }
 
     loadProducts()
-  }, [user, isOffline])
+  }, [user, isOffline, refreshKey])
+
+  // Force refresh when the component mounts or when the URL changes
+  useEffect(() => {
+    setRefreshKey((prev) => prev + 1)
+  }, [router])
 
   const handleViewProduct = (product: Product) => {
     router.push(`/wholesaler/products/${product.id}`)
   }
 
   const handleEditProduct = (product: Product) => {
-    router.push(`/wholesaler/products/${product.id}/edit`)
+    router.push(`/wholesaler/products/${product.id}`)
   }
 
   const handleDeleteClick = (product: Product) => {

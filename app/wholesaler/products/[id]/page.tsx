@@ -3,29 +3,42 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { toast } from "@/hooks/use-toast"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 import { useAuth } from "@/lib/auth-context"
-import { getProductById, updateProduct, uploadProductImage } from "@/lib/product-service"
-import { ArrowLeft, Package, Save, ImageIcon, Loader2, X } from "lucide-react"
-import type { Product } from "@/lib/types"
+import { getProductById, updateProduct, deleteProduct } from "@/lib/product-service"
+import { ArrowLeft, Package, Save, Trash2, Loader2, AlertCircle } from "lucide-react"
+import Navbar from "../../../components/navbar"
+import { TranslationProvider } from "../../../components/translation-provider"
+import Image from "next/image"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useOffline } from "@/lib/offline-context"
+import { generateDemoProducts } from "@/lib/demo-data-service"
 
-export default function ProductDetailsPage() {
-  const { id } = useParams()
+export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { user } = useAuth()
-  const [product, setProduct] = useState<Product | null>(null)
+  const { isOffline } = useOffline()
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [formData, setFormData] = useState({
+    id: "",
     name: "",
     description: "",
     price: "",
@@ -33,56 +46,69 @@ export default function ProductDetailsPage() {
     category: "",
     hsn_code: "",
     gst_rate: "",
+    image_url: "",
     is_active: true,
+    wholesaler_id: "",
   })
 
   useEffect(() => {
-    if (id) {
-      loadProductDetails(id as string)
+    const loadProduct = async () => {
+      setIsLoading(true)
+      try {
+        if (isOffline) {
+          // Use demo data in offline mode
+          const demoProducts = generateDemoProducts()
+          const product = demoProducts.find((p) => p.id === params.id)
+          if (product) {
+            setFormData({
+              ...product,
+              price: product.price.toString(),
+              stock_quantity: product.stock_quantity.toString(),
+              gst_rate: product.gst_rate ? product.gst_rate.toString() : "",
+            })
+          } else {
+            toast({
+              title: "Error",
+              description: "Product not found.",
+              variant: "destructive",
+            })
+            router.push("/wholesaler/products")
+          }
+        } else {
+          // Fetch from API in online mode
+          const { data, error } = await getProductById(params.id)
+          if (error) {
+            console.error("Error loading product:", error)
+            toast({
+              title: "Error",
+              description: "Failed to load product details.",
+              variant: "destructive",
+            })
+            router.push("/wholesaler/products")
+          } else if (data) {
+            setFormData({
+              ...data,
+              price: data.price.toString(),
+              stock_quantity: data.stock_quantity.toString(),
+              gst_rate: data.gst_rate ? data.gst_rate.toString() : "",
+            })
+          }
+        }
+      } catch (error) {
+        console.error("Error loading product:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load product details.",
+          variant: "destructive",
+        })
+        router.push("/wholesaler/products")
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }, [id])
 
-  const loadProductDetails = async (productId: string) => {
-    setIsLoading(true)
-    try {
-      const { data, error } = await getProductById(productId)
-      if (error) {
-        throw error
-      }
-
-      if (!data) {
-        throw new Error("Product not found")
-      }
-
-      // Check if the product belongs to the current user
-      if (user && data.wholesaler_id !== user.id) {
-        throw new Error("You don't have permission to edit this product")
-      }
-
-      setProduct(data)
-      setFormData({
-        name: data.name,
-        description: data.description || "",
-        price: data.price.toString(),
-        stock_quantity: data.stock_quantity.toString(),
-        category: data.category || "",
-        hsn_code: data.hsn_code || "",
-        gst_rate: data.gst_rate ? data.gst_rate.toString() : "",
-        is_active: data.is_active,
-      })
-      setImagePreview(data.image_url || null)
-    } catch (error) {
-      console.error("Error loading product details:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load product details. Please try again.",
-        variant: "destructive",
-      })
-      router.push("/wholesaler/products")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    loadProduct()
+  }, [params.id, router, isOffline])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -99,22 +125,8 @@ export default function ProductDetailsPage() {
     })
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
   const handleSubmit = async () => {
-    if (!product || !user) return
-
-    setIsSaving(true)
+    setIsSubmitting(true)
     try {
       // Validate form
       if (!formData.name || !formData.price || !formData.stock_quantity) {
@@ -123,38 +135,18 @@ export default function ProductDetailsPage() {
           description: "Please fill in all required fields.",
           variant: "destructive",
         })
-        setIsSaving(false)
+        setIsSubmitting(false)
         return
       }
 
-      // Upload image if selected
-      let imageUrl = product.image_url
-      if (imageFile) {
-        const { url, error } = await uploadProductImage(imageFile)
-        if (error) {
-          toast({
-            title: "Error",
-            description: "Failed to upload image. Please try again.",
-            variant: "destructive",
-          })
-          setIsSaving(false)
-          return
-        }
-        imageUrl = url || ""
+      const productData = {
+        ...formData,
+        price: Number(formData.price),
+        stock_quantity: Number(formData.stock_quantity),
+        gst_rate: formData.gst_rate ? Number(formData.gst_rate) : undefined,
       }
 
-      // Update product
-      const { data, error } = await updateProduct(product.id, {
-        name: formData.name,
-        description: formData.description,
-        price: Number.parseFloat(formData.price),
-        stock_quantity: Number.parseInt(formData.stock_quantity),
-        category: formData.category || undefined,
-        hsn_code: formData.hsn_code || undefined,
-        gst_rate: formData.gst_rate ? Number.parseFloat(formData.gst_rate) : undefined,
-        image_url: imageUrl,
-        is_active: formData.is_active,
-      })
+      const { error } = await updateProduct(params.id, productData)
 
       if (error) {
         throw error
@@ -164,11 +156,6 @@ export default function ProductDetailsPage() {
         title: "Success",
         description: "Product updated successfully.",
       })
-
-      // Update local product state
-      if (data) {
-        setProduct(data)
-      }
     } catch (error) {
       console.error("Error updating product:", error)
       toast({
@@ -177,216 +164,271 @@ export default function ProductDetailsPage() {
         variant: "destructive",
       })
     } finally {
-      setIsSaving(false)
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    try {
+      const { error } = await deleteProduct(params.id)
+
+      if (error) {
+        throw error
+      }
+
+      toast({
+        title: "Success",
+        description: "Product deleted successfully.",
+      })
+
+      // Navigate back to products list after short delay
+      setTimeout(() => {
+        router.push("/wholesaler/products")
+      }, 1500)
+    } catch (error) {
+      console.error("Error deleting product:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete product. Please try again.",
+        variant: "destructive",
+      })
+      setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
     }
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-        <span className="ml-2 text-lg">Loading product details...</span>
-      </div>
-    )
-  }
-
-  if (!product) {
-    return (
-      <div className="text-center py-12">
-        <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-        <h2 className="text-2xl font-bold mb-2">Product Not Found</h2>
-        <p className="text-gray-500 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-        <Button onClick={() => router.push("/wholesaler/products")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Products
-        </Button>
-      </div>
+      <TranslationProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-20 pb-20 px-4">
+            <div className="container mx-auto max-w-4xl">
+              <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            </div>
+          </main>
+        </div>
+      </TranslationProvider>
     )
   }
 
   return (
-    <div className="container mx-auto max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <Button variant="outline" onClick={() => router.push("/wholesaler/products")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Products
-        </Button>
-        <Button onClick={handleSubmit} className="bg-blue-500 hover:bg-blue-600" disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Save Changes
-            </>
-          )}
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit Product</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Product Image */}
-          <div className="space-y-2">
-            <Label htmlFor="image">Product Image</Label>
-            <div className="flex flex-col md:flex-row gap-4 items-start">
-              <div className="w-full md:w-1/3 aspect-square bg-gray-100 rounded-lg overflow-hidden relative">
-                {imagePreview ? (
-                  <>
-                    <img
-                      src={imagePreview || "/placeholder.svg"}
-                      alt={formData.name}
-                      className="w-full h-full object-contain"
-                    />
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      className="absolute top-2 right-2 h-8 w-8"
-                      onClick={() => {
-                        setImageFile(null)
-                        setImagePreview(null)
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Package className="h-16 w-16 text-gray-400" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+    <TranslationProvider>
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow pt-20 pb-20 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <div className="flex items-center justify-between mb-6">
+              <Button variant="outline" onClick={() => router.push("/wholesaler/products")}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Products
+              </Button>
+              <div className="flex gap-2">
                 <Button
-                  type="button"
                   variant="outline"
-                  onClick={() => document.getElementById("image")?.click()}
-                  className="w-full mb-2"
+                  className="text-red-600 border-red-600 hover:bg-red-50"
+                  onClick={() => setIsDeleteDialogOpen(true)}
                 >
-                  <ImageIcon className="mr-2 h-4 w-4" />
-                  {imagePreview ? "Change Image" : "Upload Image"}
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
                 </Button>
-                <p className="text-sm text-gray-500">Recommended size: 800x800 pixels. Max file size: 5MB.</p>
+                <Button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Edit Product</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Product Image */}
+                <div className="space-y-2">
+                  <Label htmlFor="image">Product Image</Label>
+                  <div className="flex flex-col md:flex-row gap-4 items-start">
+                    <div className="w-full md:w-1/3 aspect-square bg-gray-100 rounded-lg overflow-hidden relative">
+                      {formData.image_url ? (
+                        <Image
+                          src={formData.image_url || "/placeholder.svg"}
+                          alt={formData.name}
+                          fill
+                          className="object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package className="h-16 w-16 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-500 mb-2">To change the product image, please contact support.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Basic Information */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Product Name *</Label>
+                    <Input
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="Enter product name"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      name="description"
+                      value={formData.description || ""}
+                      onChange={handleInputChange}
+                      placeholder="Enter product description"
+                      rows={4}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="price">Price (₹) *</Label>
+                      <Input
+                        id="price"
+                        name="price"
+                        type="number"
+                        value={formData.price}
+                        onChange={handleInputChange}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="stock_quantity">Stock Quantity *</Label>
+                      <Input
+                        id="stock_quantity"
+                        name="stock_quantity"
+                        type="number"
+                        value={formData.stock_quantity}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                        min="0"
+                        step="1"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Additional Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="category">Category</Label>
+                      <Input
+                        id="category"
+                        name="category"
+                        value={formData.category || ""}
+                        onChange={handleInputChange}
+                        placeholder="e.g., Groceries, Snacks"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hsn_code">HSN Code</Label>
+                      <Input
+                        id="hsn_code"
+                        name="hsn_code"
+                        value={formData.hsn_code || ""}
+                        onChange={handleInputChange}
+                        placeholder="e.g., 1704"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="gst_rate">GST Rate (%)</Label>
+                      <Input
+                        id="gst_rate"
+                        name="gst_rate"
+                        type="number"
+                        value={formData.gst_rate || ""}
+                        onChange={handleInputChange}
+                        placeholder="e.g., 18"
+                        min="0"
+                        max="28"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Product Status */}
+                <div className="flex items-center space-x-2 pt-4">
+                  <Switch id="is_active" checked={formData.is_active} onCheckedChange={handleSwitchChange} />
+                  <Label htmlFor="is_active" className="cursor-pointer">
+                    {formData.is_active
+                      ? "Product is active and visible to retailers"
+                      : "Product is inactive and hidden from retailers"}
+                  </Label>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Product</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to delete <span className="font-medium">{formData.name}</span>? This action
+                    cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center gap-4 py-4">
+                  <AlertCircle className="h-10 w-10 text-red-500" />
+                  <div>
+                    <p className="font-medium">This will permanently delete the product from your catalog.</p>
+                    <p className="text-gray-500 mt-1">
+                      If you want to temporarily hide the product, consider marking it as inactive instead.
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {isDeleting ? "Deleting..." : "Delete Product"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Toaster />
           </div>
-
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Product Name *</Label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Enter product name"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Enter product description"
-                rows={4}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price (₹) *</Label>
-                <Input
-                  id="price"
-                  name="price"
-                  type="number"
-                  value={formData.price}
-                  onChange={handleInputChange}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="stock_quantity">Stock Quantity *</Label>
-                <Input
-                  id="stock_quantity"
-                  name="stock_quantity"
-                  type="number"
-                  value={formData.stock_quantity}
-                  onChange={handleInputChange}
-                  placeholder="0"
-                  min="0"
-                  step="1"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Additional Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Input
-                  id="category"
-                  name="category"
-                  value={formData.category}
-                  onChange={handleInputChange}
-                  placeholder="e.g., Groceries, Snacks"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hsn_code">HSN Code</Label>
-                <Input
-                  id="hsn_code"
-                  name="hsn_code"
-                  value={formData.hsn_code}
-                  onChange={handleInputChange}
-                  placeholder="e.g., 1704"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gst_rate">GST Rate (%)</Label>
-                <Input
-                  id="gst_rate"
-                  name="gst_rate"
-                  type="number"
-                  value={formData.gst_rate}
-                  onChange={handleInputChange}
-                  placeholder="e.g., 18"
-                  min="0"
-                  max="28"
-                  step="0.01"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Product Status */}
-          <div className="flex items-center space-x-2 pt-4">
-            <Switch id="is_active" checked={formData.is_active} onCheckedChange={handleSwitchChange} />
-            <Label htmlFor="is_active" className="cursor-pointer">
-              {formData.is_active
-                ? "Product is active and visible to retailers"
-                : "Product is inactive and hidden from retailers"}
-            </Label>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        </main>
+      </div>
+    </TranslationProvider>
   )
 }

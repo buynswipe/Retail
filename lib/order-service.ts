@@ -60,11 +60,11 @@ export async function getOrdersByRetailer(retailerId: string): Promise<{ data: O
   }
 }
 
-// Get orders by wholesaler
+// Update the getOrdersByWholesaler function to handle demo user IDs
 export async function getOrdersByWholesaler(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
   try {
-    // For demo user IDs, return demo data
-    if (wholesalerId.startsWith("user-")) {
+    // Check if this is a demo user ID (non-UUID format)
+    if (wholesalerId.startsWith("user-") || !isValidUUID(wholesalerId)) {
       console.log("Using demo orders for demo wholesaler")
       return {
         data: [
@@ -449,4 +449,10 @@ export async function getOrderStatistics(
     console.error("Error getting order statistics:", error)
     return { data: null, error }
   }
+}
+
+// Add a helper function to validate UUID format
+function isValidUUID(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
 }

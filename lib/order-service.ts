@@ -63,22 +63,127 @@ export async function getOrdersByRetailer(retailerId: string): Promise<{ data: O
 // Get orders by wholesaler
 export async function getOrdersByWholesaler(wholesalerId: string): Promise<{ data: Order[] | null; error: any }> {
   try {
-    const { data, error } = await supabase
+    // For demo user IDs, return demo data
+    if (wholesalerId.startsWith("user-")) {
+      console.log("Using demo orders for demo wholesaler")
+      return {
+        data: [
+          {
+            id: "demo-order-1",
+            order_number: "ORD12345678",
+            retailer_id: "demo-retailer-1",
+            wholesaler_id: wholesalerId,
+            total_amount: 2500,
+            status: "placed",
+            payment_method: "online",
+            payment_status: "pending",
+            created_at: new Date(Date.now() - 3600000).toISOString(),
+            items: [
+              {
+                id: "demo-item-1",
+                order_id: "demo-order-1",
+                product_id: "demo-product-1",
+                quantity: 5,
+                unit_price: 500,
+                total_price: 2500,
+                product: {
+                  id: "demo-product-1",
+                  name: "Premium Rice",
+                  description: "High quality basmati rice",
+                  price: 500,
+                  stock: 100,
+                  wholesaler_id: wholesalerId,
+                },
+              },
+            ],
+            retailer: {
+              name: "Demo Retailer",
+              business_name: "Demo Retail Store",
+              phone_number: "9876543210",
+            },
+          },
+        ],
+        error: null,
+      }
+    }
+
+    // First, get the orders for this wholesaler
+    const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select(`
         *,
-        items:order_items(*, product:product_id(*)),
         retailer:retailer_id(name, business_name, phone_number)
       `)
       .eq("wholesaler_id", wholesalerId)
       .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching orders by wholesaler:", error)
-      return { data: null, error }
+    if (ordersError) {
+      console.error("Error fetching orders by wholesaler:", ordersError)
+      return { data: null, error: ordersError }
     }
 
-    return { data, error: null }
+    // If we have orders, get the order items and products separately
+    if (orders && orders.length > 0) {
+      const orderIds = orders.map((order) => order.id)
+
+      // Get all order items for these orders
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .in("order_id", orderIds)
+
+      if (itemsError) {
+        console.error("Error fetching order items:", itemsError)
+        return { data: null, error: itemsError }
+      }
+
+      // Get all product IDs from order items
+      const productIds = orderItems ? orderItems.map((item) => item.product_id) : []
+
+      // Get all products for these IDs
+      const { data: products, error: productsError } = await supabase.from("products").select("*").in("id", productIds)
+
+      if (productsError) {
+        console.error("Error fetching products:", productsError)
+        return { data: null, error: productsError }
+      }
+
+      // Create a map of products by ID for easy lookup
+      const productsMap = {}
+      if (products) {
+        products.forEach((product) => {
+          productsMap[product.id] = product
+        })
+      }
+
+      // Create a map of order items by order ID
+      const orderItemsMap = {}
+      if (orderItems) {
+        orderItems.forEach((item) => {
+          if (!orderItemsMap[item.order_id]) {
+            orderItemsMap[item.order_id] = []
+          }
+
+          // Add product data to order item
+          const itemWithProduct = {
+            ...item,
+            product: productsMap[item.product_id] || null,
+          }
+
+          orderItemsMap[item.order_id].push(itemWithProduct)
+        })
+      }
+
+      // Add items to each order
+      const ordersWithItems = orders.map((order) => ({
+        ...order,
+        items: orderItemsMap[order.id] || [],
+      }))
+
+      return { data: ordersWithItems, error: null }
+    }
+
+    return { data: orders || [], error: null }
   } catch (error) {
     console.error("Error fetching orders by wholesaler:", error)
     return { data: null, error }

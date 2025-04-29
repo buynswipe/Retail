@@ -43,11 +43,90 @@ function HistoryContent() {
 
     setIsLoading(true)
     try {
-      const { data, error } = await getAssignmentsByDeliveryPartner(user.id)
-      if (error) {
-        throw error
+      // FIX: Use demo data if user ID doesn't look like a UUID
+      if (user.id.startsWith("user-")) {
+        // Use demo data for preview/development
+        const demoAssignments = [
+          {
+            id: "demo-assignment-1",
+            order_id: "demo-order-1",
+            delivery_partner_id: user.id,
+            status: "completed",
+            delivery_charge: 50,
+            delivery_charge_gst: 9,
+            created_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+            updated_at: new Date(Date.now() - 82800000).toISOString(),
+            otp: "123456",
+            proof_image_url: "/digital-signature-confirmation.png",
+            order: {
+              order_number: "ORD12345",
+              retailer: {
+                business_name: "Demo Retailer Shop",
+                pin_code: "400001",
+              },
+              wholesaler: {
+                business_name: "Demo Wholesaler Ltd",
+                pin_code: "400002",
+              },
+            },
+          },
+          {
+            id: "demo-assignment-2",
+            order_id: "demo-order-2",
+            delivery_partner_id: user.id,
+            status: "completed",
+            delivery_charge: 75,
+            delivery_charge_gst: 13.5,
+            created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+            updated_at: new Date(Date.now() - 169200000).toISOString(),
+            otp: "654321",
+            proof_image_url: "/digital-delivery-check.png",
+            order: {
+              order_number: "ORD12346",
+              retailer: {
+                business_name: "Another Retail Store",
+                pin_code: "400003",
+              },
+              wholesaler: {
+                business_name: "Premium Wholesaler",
+                pin_code: "400004",
+              },
+            },
+          },
+          {
+            id: "demo-assignment-3",
+            order_id: "demo-order-3",
+            delivery_partner_id: user.id,
+            status: "declined",
+            delivery_charge: 60,
+            delivery_charge_gst: 10.8,
+            created_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
+            updated_at: new Date(Date.now() - 259200000).toISOString(),
+            otp: null,
+            proof_image_url: null,
+            order: {
+              order_number: "ORD12347",
+              retailer: {
+                business_name: "Local Kirana Store",
+                pin_code: "400005",
+              },
+              wholesaler: {
+                business_name: "City Distributors",
+                pin_code: "400006",
+              },
+            },
+          },
+        ]
+
+        setAssignments(demoAssignments)
+      } else {
+        // Use real data for production
+        const { data, error } = await getAssignmentsByDeliveryPartner(user.id)
+        if (error) {
+          throw error
+        }
+        setAssignments(data || [])
       }
-      setAssignments(data || [])
     } catch (error) {
       console.error("Error loading assignments:", error)
       toast({

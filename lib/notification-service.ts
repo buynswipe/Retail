@@ -46,7 +46,7 @@ export async function createNotification(notification: {
   }
 }
 
-// Get notifications for a user with improved error handling
+// Update the getNotifications function to handle demo user IDs
 export async function getNotifications(userId: string): Promise<{ data: Notification[] | null; error: any }> {
   try {
     // Check if supabase client is initialized
@@ -59,6 +59,52 @@ export async function getNotifications(userId: string): Promise<{ data: Notifica
     if (!userId) {
       console.error("Invalid user ID provided to getNotifications")
       return { data: null, error: new Error("Invalid user ID") }
+    }
+
+    // If this is a demo user ID (starts with "user-"), return demo data
+    if (userId.startsWith("user-")) {
+      console.log("Using demo notifications for demo user")
+      return {
+        data: [
+          {
+            id: "demo-notif-1",
+            user_id: userId,
+            type: "order",
+            message: "Your order #ORD12345678 has been confirmed",
+            message_hindi: "आपका ऑर्डर #ORD12345678 की पुष्टि हो गई है",
+            priority: "medium",
+            is_read: false,
+            created_at: new Date(Date.now() - 3600000).toISOString(),
+            related_id: "demo-order-1",
+            related_type: "order",
+          },
+          {
+            id: "demo-notif-2",
+            user_id: userId,
+            type: "payment",
+            message: "Payment for order #ORD12345678 has been completed",
+            message_hindi: "ऑर्डर #ORD12345678 के लिए भुगतान पूरा हो गया है",
+            priority: "high",
+            is_read: true,
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+            related_id: "demo-order-1",
+            related_type: "order",
+          },
+          {
+            id: "demo-notif-3",
+            user_id: userId,
+            type: "system",
+            message: "Welcome to Retail Bandhu!",
+            message_hindi: "रिटेल बंधु में आपका स्वागत है!",
+            priority: "low",
+            is_read: false,
+            created_at: new Date(Date.now() - 172800000).toISOString(),
+            related_id: null,
+            related_type: null,
+          },
+        ],
+        error: null,
+      }
     }
 
     // Add timeout to prevent hanging requests
@@ -146,13 +192,19 @@ export async function deleteNotification(notificationId: string): Promise<{ succ
   }
 }
 
-// Get unread notification count with improved error handling
+// Update the getUnreadNotificationCount function to handle demo user IDs
 export async function getUnreadNotificationCount(userId: string): Promise<{ count: number; error: any }> {
   try {
     // Check if userId is valid
     if (!userId) {
       console.error("Invalid user ID provided to getUnreadNotificationCount")
       return { count: 0, error: new Error("Invalid user ID") }
+    }
+
+    // If this is a demo user ID (starts with "user-"), return demo count
+    if (userId.startsWith("user-")) {
+      console.log("Using demo notification count for demo user")
+      return { count: 2, error: null }
     }
 
     const { count, error } = await supabase

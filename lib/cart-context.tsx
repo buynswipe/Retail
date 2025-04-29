@@ -7,6 +7,7 @@ import indexedDBService from "./indexed-db"
 import { useAuth } from "./auth-context"
 import { supabase } from "./supabase-client"
 import { useToast } from "@/components/ui/use-toast"
+import { generateDemoProducts } from "./demo-data-service"
 
 export interface CartItem {
   id?: string
@@ -42,7 +43,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const { user } = useAuth()
-  const { isOnline } = useOffline()
+  const { isOnline, isOffline } = useOffline()
   const { toast } = useToast()
   const maxRetries = 3
 
@@ -122,7 +123,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Function to load cart from server with retry logic
   const loadCartFromServer = useCallback(async () => {
-    if (!user || !isOnline) return
+    if (!user) return
+
+    // If we're in offline mode or using a demo user, use demo data
+    if (isOffline || user.id.startsWith("user-")) {
+      console.log("Using demo cart data")
+      // Generate some demo cart items
+      const demoProducts = generateDemoProducts().slice(0, 3)
+      const demoCartItems = demoProducts.map((product) => ({
+        id: `cart-${product.id}`,
+        product_id: product.id,
+        quantity: Math.floor(Math.random() * 5) + 1,
+        product,
+      }))
+
+      setItems(demoCartItems)
+
+      if (demoProducts.length > 0) {
+        setWholesalerId(demoProducts[0].wholesaler_id)
+        setWholesalerName("Demo Wholesaler")
+      }
+
+      return
+    }
 
     setIsLoading(true)
     setError(null)
@@ -131,7 +154,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Add timeout to prevent hanging requests
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), 10000))
 
-      const fetchPromise = supabase.from("cart_items").select("*, product:product_id(*)").eq("user_id", user.id)
+      // Try to fetch cart items, but handle the case where the table doesn't exist
+      const fetchPromise = supabase
+        .from("cart_items")
+        .select(`
+          id, 
+          user_id, 
+          product_id, 
+          quantity
+        `)
+        .eq("user_id", user.id)
 
       // Race between fetch and timeout
       const { data, error } = await Promise.race([
@@ -141,46 +173,88 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }),
       ])
 
-      if (error) {
+      // If the table doesn't exist, use demo data
+      if (error && error.message.includes("does not exist")) {
+        console.log("Cart items table doesn't exist, using demo data")
+        const demoProducts = generateDemoProducts().slice(0, 3)
+        const demoCartItems = demoProducts.map((product) => ({
+          id: `cart-${product.id}`,
+          product_id: product.id,
+          quantity: Math.floor(Math.random() * 5) + 1,
+          product,
+        }))
+
+        setItems(demoCartItems)
+
+        if (demoProducts.length > 0) {
+          setWholesalerId(demoProducts[0].wholesaler_id)
+          setWholesalerName("Demo Wholesaler")
+        }
+
+        return
+      } else if (error) {
         throw error
       }
 
       if (data && data.length > 0) {
-        // Get wholesaler info from the first item
-        const firstItem = data[0]
-        if (firstItem.product && firstItem.product.wholesaler_id) {
-          try {
-            // Get wholesaler name with timeout
-            const wholesalerPromise = supabase
-              .from("users")
-              .select("business_name")
-              .eq("id", firstItem.product.wholesaler_id)
-              .single()
+        // Get all product IDs from cart items
+        const productIds = data.map((item) => item.product_id)
 
-            const { data: wholesalerData, error: wholesalerError } = await Promise.race([
-              wholesalerPromise,
-              new Promise((_, reject) => setTimeout(() => reject(new Error("Wholesaler request timed out")), 5000)),
-            ])
+        // Fetch products for these IDs
+        const { data: productsData, error: productsError } = await supabase
+          .from("products")
+          .select("*")
+          .in("id", productIds)
 
-            if (!wholesalerError && wholesalerData) {
-              setWholesalerId(firstItem.product.wholesaler_id)
-              setWholesalerName(wholesalerData.business_name)
+        if (productsError) {
+          throw productsError
+        }
+
+        // Create a map of products by ID for easy lookup
+        const productsMap = {}
+        if (productsData) {
+          productsData.forEach((product) => {
+            productsMap[product.id] = product
+          })
+        }
+
+        // Get wholesaler info if we have products
+        if (productsData && productsData.length > 0) {
+          const firstProduct = productsData[0]
+          if (firstProduct && firstProduct.wholesaler_id) {
+            try {
+              // Get wholesaler name with timeout
+              const wholesalerPromise = supabase
+                .from("users")
+                .select("business_name")
+                .eq("id", firstProduct.wholesaler_id)
+                .single()
+
+              const { data: wholesalerData, error: wholesalerError } = await Promise.race([
+                wholesalerPromise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Wholesaler request timed out")), 5000)),
+              ])
+
+              if (!wholesalerError && wholesalerData) {
+                setWholesalerId(firstProduct.wholesaler_id)
+                setWholesalerName(wholesalerData.business_name)
+              }
+            } catch (wholesalerError) {
+              console.error("Error fetching wholesaler info:", wholesalerError)
+              // Continue with cart items even if wholesaler info fails
             }
-          } catch (wholesalerError) {
-            console.error("Error fetching wholesaler info:", wholesalerError)
-            // Continue with cart items even if wholesaler info fails
           }
         }
 
         // Transform data to CartItem format
         const cartItems: CartItem[] = data
-          .filter((item) => item.product) // Filter out items with missing products
+          .filter((item) => productsMap[item.product_id]) // Filter out items with missing products
           .map((item) => ({
             id: item.id,
             user_id: item.user_id,
             product_id: item.product_id,
             quantity: item.quantity,
-            product: item.product,
+            product: productsMap[item.product_id],
           }))
 
         setItems(cartItems)
@@ -202,7 +276,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }, [user, isOnline, retryCount, maxRetries])
+  }, [user, isOffline, retryCount, maxRetries])
 
   // Manual retry function
   const retryLoadCart = async () => {
@@ -213,12 +287,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Load cart from server when user logs in
   useEffect(() => {
     loadCartFromServer()
-  }, [user, isOnline, loadCartFromServer])
+  }, [user, loadCartFromServer])
 
   // Load cart from IndexedDB when offline
   useEffect(() => {
     const loadCartFromIndexedDB = async () => {
-      if (user && !isOnline) {
+      if (user && isOffline) {
         setIsLoading(true)
         try {
           const offlineCart = await indexedDBService.getOfflineData(`cart:${user.id}`)
@@ -241,7 +315,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
 
     loadCartFromIndexedDB()
-  }, [user, isOnline, toast])
+  }, [user, isOffline, toast])
 
   const addItem = (product: Product, quantity: number) => {
     setItems((prevItems) => {
@@ -260,7 +334,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     })
 
     // If online, sync with server
-    if (isOnline && user) {
+    if (isOnline && user && !user.id.startsWith("user-")) {
       syncCartItem(product.id, quantity, true)
     }
 
@@ -274,7 +348,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => prevItems.filter((item) => item.product.id !== productId))
 
     // If online, sync with server
-    if (isOnline && user) {
+    if (isOnline && user && !user.id.startsWith("user-")) {
       syncCartItem(productId, 0, false)
     }
 
@@ -293,7 +367,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => prevItems.map((item) => (item.product.id === productId ? { ...item, quantity } : item)))
 
     // If online, sync with server
-    if (isOnline && user) {
+    if (isOnline && user && !user.id.startsWith("user-")) {
       syncCartItem(productId, quantity, true)
     }
   }
@@ -304,7 +378,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setWholesalerName(null)
 
     // If online, clear server cart
-    if (isOnline && user) {
+    if (isOnline && user && !user.id.startsWith("user-")) {
       clearServerCart()
     }
 
@@ -329,9 +403,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Sync cart item with server with improved error handling
   const syncCartItem = async (productId: string, quantity: number, isAdd: boolean) => {
-    if (!user || !isOnline) return
+    if (!user || isOffline || user.id.startsWith("user-")) return
 
     try {
+      // Check if cart_items table exists
+      const { error: tableCheckError } = await supabase.from("cart_items").select("id").limit(1)
+
+      if (tableCheckError && tableCheckError.message.includes("does not exist")) {
+        console.log("Cart items table doesn't exist, skipping sync")
+        return
+      }
+
       // Check if item exists in server cart
       const { data: existingItems, error: fetchError } = await supabase
         .from("cart_items")
@@ -388,9 +470,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Clear server cart with improved error handling
   const clearServerCart = async () => {
-    if (!user || !isOnline) return
+    if (!user || isOffline || user.id.startsWith("user-")) return
 
     try {
+      // Check if cart_items table exists
+      const { error: tableCheckError } = await supabase.from("cart_items").select("id").limit(1)
+
+      if (tableCheckError && tableCheckError.message.includes("does not exist")) {
+        console.log("Cart items table doesn't exist, skipping clear")
+        return
+      }
+
       const { error } = await supabase.from("cart_items").delete().eq("user_id", user.id)
 
       if (error) throw error

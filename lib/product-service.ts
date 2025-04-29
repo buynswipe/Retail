@@ -153,41 +153,97 @@ export async function deleteProduct(productId: string): Promise<{ error: any }> 
 }
 
 // Upload product image
-export async function uploadProductImage(
-  file: File,
-  productId: string,
-): Promise<{ data: { path: string; url: string } | null; error: any }> {
+export async function uploadProductImage(file: File): Promise<{ url: string | null; error: any }> {
   try {
     // Generate a unique file name
     const fileExt = file.name.split(".").pop()
-    const fileName = `${productId}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`
     const filePath = `product-images/${fileName}`
 
     // Upload the file to Supabase Storage
-    const { data, error } = await supabase.storage.from("products").upload(filePath, file, {
+    const { error } = await supabase.storage.from("products").upload(filePath, file, {
       cacheControl: "3600",
       upsert: false,
     })
 
     if (error) {
       console.error("Error uploading product image:", error)
-      return { data: null, error }
+      return { url: null, error }
     }
 
     // Get the public URL for the uploaded file
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("products").getPublicUrl(filePath)
+    const { data } = supabase.storage.from("products").getPublicUrl(filePath)
 
     return {
-      data: {
-        path: filePath,
-        url: publicUrl,
-      },
+      url: data.publicUrl,
       error: null,
     }
   } catch (error) {
     console.error("Error uploading product image:", error)
+    return { url: null, error }
+  }
+}
+
+// Search products
+export async function searchProducts(
+  query: string,
+  filters?: {
+    category?: string
+    minPrice?: number
+    maxPrice?: number
+    wholesalerId?: string
+  },
+): Promise<{ data: Product[] | null; error: any }> {
+  try {
+    let supabaseQuery = supabase
+      .from("products")
+      .select("*")
+      .eq("is_active", true)
+      .or(`name.ilike.%${query}%,description.ilike.%${query}%,category.ilike.%${query}%`)
+
+    // Apply filters
+    if (filters) {
+      if (filters.category) {
+        supabaseQuery = supabaseQuery.eq("category", filters.category)
+      }
+      if (filters.minPrice !== undefined) {
+        supabaseQuery = supabaseQuery.gte("price", filters.minPrice)
+      }
+      if (filters.maxPrice !== undefined) {
+        supabaseQuery = supabaseQuery.lte("price", filters.maxPrice)
+      }
+      if (filters.wholesalerId) {
+        supabaseQuery = supabaseQuery.eq("wholesaler_id", filters.wholesalerId)
+      }
+    }
+
+    const { data, error } = await supabaseQuery.order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error searching products:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error searching products:", error)
+    return { data: null, error }
+  }
+}
+
+// Get product categories
+export async function getProductCategories(): Promise<{ data: string[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_product_categories")
+
+    if (error) {
+      console.error("Error fetching product categories:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error fetching product categories:", error)
     return { data: null, error }
   }
 }

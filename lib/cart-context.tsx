@@ -23,6 +23,7 @@ interface CartContextType {
   setWholesaler: (id: string, name: string) => void
   totalItems: number
   totalAmount: number
+  isLoading: boolean
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -31,6 +32,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [wholesalerId, setWholesalerId] = useState<string | null>(null)
   const [wholesalerName, setWholesalerName] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const { user } = useAuth()
   const { isOnline } = useOffline()
 
@@ -90,16 +92,74 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saveCartToIndexedDB = async () => {
       if (user) {
-        await indexedDBService.storeOfflineData(`cart:${user.id}`, {
-          items,
-          wholesalerId,
-          wholesalerName,
-        })
+        try {
+          await indexedDBService.storeOfflineData(`cart:${user.id}`, {
+            items,
+            wholesalerId,
+            wholesalerName,
+          })
+        } catch (error) {
+          console.error("Error saving cart to IndexedDB:", error)
+        }
       }
     }
 
     saveCartToIndexedDB()
   }, [items, wholesalerId, wholesalerName, user])
+
+  // Load cart from server when user logs in
+  useEffect(() => {
+    const loadCartFromServer = async () => {
+      if (user && isOnline) {
+        setIsLoading(true)
+        try {
+          const { data, error } = await supabase
+            .from("cart_items")
+            .select("*, product:product_id(*)")
+            .eq("user_id", user.id)
+
+          if (error) {
+            console.error("Error loading cart from server:", error)
+            return
+          }
+
+          if (data && data.length > 0) {
+            // Get wholesaler info from the first item
+            const firstItem = data[0]
+            if (firstItem.product && firstItem.product.wholesaler_id) {
+              // Get wholesaler name
+              const { data: wholesalerData, error: wholesalerError } = await supabase
+                .from("users")
+                .select("business_name")
+                .eq("id", firstItem.product.wholesaler_id)
+                .single()
+
+              if (!wholesalerError && wholesalerData) {
+                setWholesalerId(firstItem.product.wholesaler_id)
+                setWholesalerName(wholesalerData.business_name)
+              }
+            }
+
+            // Transform data to CartItem format
+            const cartItems: CartItem[] = data
+              .filter((item) => item.product) // Filter out items with missing products
+              .map((item) => ({
+                product: item.product,
+                quantity: item.quantity,
+              }))
+
+            setItems(cartItems)
+          }
+        } catch (error) {
+          console.error("Error loading cart from server:", error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadCartFromServer()
+  }, [user, isOnline])
 
   const addItem = (product: Product, quantity: number) => {
     setItems((prevItems) => {
@@ -133,6 +193,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   const updateQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(productId)
+      return
+    }
+
     setItems((prevItems) => prevItems.map((item) => (item.product.id === productId ? { ...item, quantity } : item)))
 
     // If online, sync with server
@@ -221,6 +286,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setWholesaler,
         totalItems,
         totalAmount,
+        isLoading,
       }}
     >
       {children}

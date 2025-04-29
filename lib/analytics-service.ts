@@ -1,5 +1,207 @@
 import { supabase } from "./supabase-client"
-import { type DateRange, dateRangeToSupabaseFilter, generateForecast } from "./analytics-utils"
+import type { DateRange, AnalyticsFilter, ChartDataPoint, PieChartData } from "./types"
+
+// Get sales data for a date range
+export async function getSalesData(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+  filter?: AnalyticsFilter,
+): Promise<{ data: ChartDataPoint[]; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_sales_data", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+      p_region: filter?.region || null,
+      p_product_category: filter?.productCategory || null,
+      p_payment_method: filter?.paymentMethod || null,
+    })
+
+    if (error) {
+      console.error("Error fetching sales data:", error)
+      return { data: [], error }
+    }
+
+    // Transform data to ChartDataPoint format
+    const chartData: ChartDataPoint[] = data.map((item: any) => ({
+      date: item.date,
+      value: item.total_amount,
+      label: `₹${item.total_amount.toFixed(2)}`,
+    }))
+
+    return { data: chartData, error: null }
+  } catch (error) {
+    console.error("Error fetching sales data:", error)
+    return { data: [], error }
+  }
+}
+
+// Get order count data for a date range
+export async function getOrderCountData(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+  filter?: AnalyticsFilter,
+): Promise<{ data: ChartDataPoint[]; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_order_count_data", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+      p_region: filter?.region || null,
+      p_product_category: filter?.productCategory || null,
+      p_payment_method: filter?.paymentMethod || null,
+    })
+
+    if (error) {
+      console.error("Error fetching order count data:", error)
+      return { data: [], error }
+    }
+
+    // Transform data to ChartDataPoint format
+    const chartData: ChartDataPoint[] = data.map((item: any) => ({
+      date: item.date,
+      value: item.order_count,
+      label: `${item.order_count} orders`,
+    }))
+
+    return { data: chartData, error: null }
+  } catch (error) {
+    console.error("Error fetching order count data:", error)
+    return { data: [], error }
+  }
+}
+
+// Get product category distribution
+export async function getProductCategoryDistribution(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+): Promise<{ data: PieChartData[]; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_product_category_distribution", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+    })
+
+    if (error) {
+      console.error("Error fetching product category distribution:", error)
+      return { data: [], error }
+    }
+
+    // Transform data to PieChartData format
+    const chartData: PieChartData[] = data.map((item: any, index: number) => ({
+      label: item.category || "Uncategorized",
+      value: item.total_amount,
+      color: getColorForIndex(index),
+    }))
+
+    return { data: chartData, error: null }
+  } catch (error) {
+    console.error("Error fetching product category distribution:", error)
+    return { data: [], error }
+  }
+}
+
+// Get payment method distribution
+export async function getPaymentMethodDistribution(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+): Promise<{ data: PieChartData[]; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_payment_method_distribution", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+    })
+
+    if (error) {
+      console.error("Error fetching payment method distribution:", error)
+      return { data: [], error }
+    }
+
+    // Transform data to PieChartData format
+    const chartData: PieChartData[] = data.map((item: any, index: number) => ({
+      label: item.payment_method === "cod" ? "Cash on Delivery" : "UPI",
+      value: item.total_amount,
+      color: getColorForIndex(index),
+    }))
+
+    return { data: chartData, error: null }
+  } catch (error) {
+    console.error("Error fetching payment method distribution:", error)
+    return { data: [], error }
+  }
+}
+
+// Get top selling products
+export async function getTopSellingProducts(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+  limit = 5,
+): Promise<{ data: any[]; error: any }> {
+  try {
+    const { data, error } = await supabase.rpc("get_top_selling_products", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+      p_limit: limit,
+    })
+
+    if (error) {
+      console.error("Error fetching top selling products:", error)
+      return { data: [], error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error fetching top selling products:", error)
+    return { data: [], error }
+  }
+}
+
+// Get sales summary
+export async function getSalesSummary(
+  userId: string,
+  role: "retailer" | "wholesaler",
+  dateRange: DateRange,
+): Promise<{
+  data: {
+    total_sales: number
+    total_orders: number
+    average_order_value: number
+    total_products_sold: number
+  } | null
+  error: any
+}> {
+  try {
+    const { data, error } = await supabase.rpc("get_sales_summary", {
+      p_user_id: userId,
+      p_role: role,
+      p_start_date: dateRange.startDate.toISOString(),
+      p_end_date: dateRange.endDate.toISOString(),
+    })
+
+    if (error) {
+      console.error("Error fetching sales summary:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error fetching sales summary:", error)
+    return { data: null, error }
+  }
+}
 
 // Get order analytics with advanced filtering
 export async function getOrderAnalytics(
@@ -542,4 +744,54 @@ export async function getAvailablePaymentMethods() {
     console.error("Error fetching available payment methods:", error)
     throw error
   }
+}
+
+// Helper function to get color for pie chart
+function getColorForIndex(index: number): string {
+  const colors = [
+    "#3B82F6", // blue-500
+    "#10B981", // emerald-500
+    "#F59E0B", // amber-500
+    "#EF4444", // red-500
+    "#8B5CF6", // violet-500
+    "#EC4899", // pink-500
+    "#6366F1", // indigo-500
+    "#14B8A6", // teal-500
+    "#F97316", // orange-500
+    "#84CC16", // lime-500
+  ]
+
+  return colors[index % colors.length]
+}
+
+// Helper function to convert date range to Supabase filter
+function dateRangeToSupabaseFilter(dateRange: DateRange): string {
+  return `created_at >= '${dateRange.startDate.toISOString()}' AND created_at <= '${dateRange.endDate.toISOString()}'`
+}
+
+// Helper function to generate forecast data
+function generateForecast(data: { date: string; value: number }[], days: number): { date: string; value: number }[] {
+  if (data.length < 7) {
+    return []
+  }
+
+  // Simple moving average forecast
+  const avgChange =
+    data.slice(1).reduce((sum, item, index) => sum + (item.value - data[index].value), 0) / (data.length - 1)
+
+  const lastDate = new Date(data[data.length - 1].date)
+  const lastValue = data[data.length - 1].value
+
+  const forecast = []
+  for (let i = 1; i <= days; i++) {
+    const forecastDate = new Date(lastDate)
+    forecastDate.setDate(lastDate.getDate() + i)
+
+    forecast.push({
+      date: forecastDate.toISOString().split("T")[0],
+      value: Math.max(0, lastValue + avgChange * i),
+    })
+  }
+
+  return forecast
 }

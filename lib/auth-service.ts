@@ -1,5 +1,5 @@
 import { supabase } from "./supabase-client"
-import type { UserRole } from "./supabase-client"
+import type { UserRole } from "./types"
 import { demoUsers } from "./demo-data-service"
 
 export interface SignUpData {
@@ -25,12 +25,13 @@ export interface VerifyOtpData {
 
 export interface UserData {
   id: string
-  phone: string
+  phone_number: string
   role: UserRole
   name?: string
-  businessName?: string
-  pinCode?: string
-  isApproved: boolean
+  business_name?: string
+  pin_code?: string
+  is_approved: boolean
+  created_at: string
 }
 
 // Send OTP via WhatsApp (simulated)
@@ -79,12 +80,13 @@ export async function verifyOtp(
         success: true,
         userData: {
           id: demoUser.id,
-          phone: demoUser.phone_number,
+          phone_number: demoUser.phone_number,
           role: demoUser.role as UserRole,
           name: demoUser.name,
-          businessName: demoUser.business_name,
-          pinCode: demoUser.pin_code,
-          isApproved: demoUser.is_approved,
+          business_name: demoUser.business_name,
+          pin_code: demoUser.pin_code,
+          is_approved: demoUser.is_approved,
+          created_at: demoUser.created_at,
         },
       }
     }
@@ -97,7 +99,7 @@ export async function verifyOtp(
     // Get user data
     const { data: userData, error } = await supabase
       .from("users")
-      .select("id, phone_number, role, name, business_name, pin_code, is_approved")
+      .select("id, phone_number, role, name, business_name, pin_code, is_approved, created_at")
       .eq("phone_number", data.phone)
       .single()
 
@@ -112,12 +114,13 @@ export async function verifyOtp(
       success: true,
       userData: {
         id: userData.id,
-        phone: userData.phone_number,
+        phone_number: userData.phone_number,
         role: userData.role as UserRole,
         name: userData.name,
-        businessName: userData.business_name,
-        pinCode: userData.pin_code,
-        isApproved: userData.is_approved,
+        business_name: userData.business_name,
+        pin_code: userData.pin_code,
+        is_approved: userData.is_approved,
+        created_at: userData.created_at,
       },
     }
   } catch (error) {
@@ -127,7 +130,7 @@ export async function verifyOtp(
 }
 
 // Sign up a new user
-export async function signUp(data: SignUpData): Promise<{ success: boolean; error?: string }> {
+export async function signUp(data: SignUpData): Promise<{ success: boolean; userId?: string; error?: string }> {
   try {
     // Check if user already exists
     const { data: existingUser, error: checkError } = await supabase
@@ -145,24 +148,29 @@ export async function signUp(data: SignUpData): Promise<{ success: boolean; erro
     }
 
     // Create new user
-    const { error } = await supabase.from("users").insert({
-      phone_number: data.phone,
-      role: data.role,
-      name: data.name,
-      business_name: data.businessName,
-      pin_code: data.pinCode,
-      gst_number: data.gstNumber,
-      bank_account_number: data.bankAccountNumber,
-      bank_ifsc: data.bankIfsc,
-      vehicle_type: data.vehicleType,
-      is_approved: data.role === "retailer", // Auto-approve retailers
-    })
+    const { data: newUser, error } = await supabase
+      .from("users")
+      .insert({
+        phone_number: data.phone,
+        role: data.role,
+        name: data.name,
+        business_name: data.businessName,
+        pin_code: data.pinCode,
+        gst_number: data.gstNumber,
+        bank_account_number: data.bankAccountNumber,
+        bank_ifsc: data.bankIfsc,
+        vehicle_type: data.vehicleType,
+        is_approved: data.role === "retailer", // Auto-approve retailers
+        created_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single()
 
     if (error) {
       return { success: false, error: error.message }
     }
 
-    return { success: true }
+    return { success: true, userId: newUser.id }
   } catch (error) {
     console.error("Error signing up:", error)
     return { success: false, error: "Failed to sign up. Please try again." }
@@ -174,7 +182,7 @@ export async function getCurrentUser(): Promise<UserData | null> {
   try {
     // In a real app, this would use Supabase Auth
     // For now, we'll check localStorage
-    const storedUser = localStorage.getItem("currentUser")
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null
     if (!storedUser) return null
 
     return JSON.parse(storedUser) as UserData
@@ -189,10 +197,58 @@ export async function signOut(): Promise<{ success: boolean; error?: string }> {
   try {
     // In a real app, this would use Supabase Auth
     // For now, we'll just clear localStorage
-    localStorage.removeItem("currentUser")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("currentUser")
+    }
     return { success: true }
   } catch (error) {
     console.error("Error signing out:", error)
     return { success: false, error: "Failed to sign out. Please try again." }
+  }
+}
+
+// Update user profile
+export async function updateUserProfile(
+  userId: string,
+  data: {
+    name?: string
+    business_name?: string
+    pin_code?: string
+    gst_number?: string
+    bank_account_number?: string
+    bank_ifsc?: string
+    profile_image_url?: string
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from("users")
+      .update({
+        ...data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId)
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    // Update local storage
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null
+    if (storedUser) {
+      const userData = JSON.parse(storedUser) as UserData
+      const updatedUser = {
+        ...userData,
+        name: data.name || userData.name,
+        business_name: data.business_name || userData.business_name,
+        pin_code: data.pin_code || userData.pin_code,
+      }
+      localStorage.setItem("currentUser", JSON.stringify(updatedUser))
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating user profile:", error)
+    return { success: false, error: "Failed to update profile. Please try again." }
   }
 }

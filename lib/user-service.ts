@@ -18,6 +18,7 @@ export async function getUserById(userId: string): Promise<{ data: User | null; 
     const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
 
     if (error) {
+      console.error("Error fetching user:", error)
       return { data: null, error }
     }
 
@@ -42,7 +43,22 @@ export async function updateUserProfile(
       })
       .eq("id", userId)
 
-    return { success: !error, error }
+    if (error) {
+      console.error("Error updating user profile:", error)
+      return { success: false, error }
+    }
+
+    // Update local storage if available
+    if (typeof window !== "undefined") {
+      const currentUser = localStorage.getItem("currentUser")
+      if (currentUser) {
+        const parsedUser = JSON.parse(currentUser)
+        const updatedUser = { ...parsedUser, ...userData }
+        localStorage.setItem("currentUser", JSON.stringify(updatedUser))
+      }
+    }
+
+    return { success: true, error: null }
   } catch (error) {
     console.error("Error updating user profile:", error)
     return { success: false, error }
@@ -64,6 +80,7 @@ export async function getUsersByRole(
     const { data, error } = await query.order("created_at", { ascending: false })
 
     if (error) {
+      console.error("Error fetching users by role:", error)
       return { data: null, error }
     }
 
@@ -88,7 +105,12 @@ export async function updateUserApprovalStatus(
       })
       .eq("id", userId)
 
-    return { success: !error, error }
+    if (error) {
+      console.error("Error updating user approval status:", error)
+      return { success: false, error }
+    }
+
+    return { success: true, error: null }
   } catch (error) {
     console.error("Error updating user approval status:", error)
     return { success: false, error }
@@ -105,6 +127,7 @@ export async function uploadProfileImage(file: File): Promise<{ url: string | nu
     const { error } = await supabase.storage.from("profile-images").upload(filePath, file)
 
     if (error) {
+      console.error("Error uploading profile image:", error)
       return { url: null, error }
     }
 
@@ -132,6 +155,7 @@ export async function getUsersByPinCode(
     const { data, error } = await query
 
     if (error) {
+      console.error("Error fetching users by pin code:", error)
       return { data: null, error }
     }
 
@@ -157,6 +181,7 @@ export async function searchUsers(searchTerm: string, role?: UserRole): Promise<
     const { data, error } = await query.limit(20)
 
     if (error) {
+      console.error("Error searching users:", error)
       return { data: null, error }
     }
 
@@ -179,57 +204,62 @@ export async function getUserStatistics(): Promise<{
   error: any
 }> {
   try {
-    const { data: totalUsers, error: totalError } = await supabase
+    const { count: totalUsers, error: totalError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
 
     if (totalError) {
+      console.error("Error fetching total users:", totalError)
       return { data: null, error: totalError }
     }
 
-    const { data: retailers, error: retailersError } = await supabase
+    const { count: retailers, error: retailersError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "retailer")
 
     if (retailersError) {
+      console.error("Error fetching retailers count:", retailersError)
       return { data: null, error: retailersError }
     }
 
-    const { data: wholesalers, error: wholesalersError } = await supabase
+    const { count: wholesalers, error: wholesalersError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "wholesaler")
 
     if (wholesalersError) {
+      console.error("Error fetching wholesalers count:", wholesalersError)
       return { data: null, error: wholesalersError }
     }
 
-    const { data: deliveryPartners, error: deliveryError } = await supabase
+    const { count: deliveryPartners, error: deliveryError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "delivery")
 
     if (deliveryError) {
+      console.error("Error fetching delivery partners count:", deliveryError)
       return { data: null, error: deliveryError }
     }
 
-    const { data: pendingApprovals, error: pendingError } = await supabase
+    const { count: pendingApprovals, error: pendingError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("is_approved", false)
 
     if (pendingError) {
+      console.error("Error fetching pending approvals count:", pendingError)
       return { data: null, error: pendingError }
     }
 
     return {
       data: {
-        total_users: totalUsers.count || 0,
-        retailers: retailers.count || 0,
-        wholesalers: wholesalers.count || 0,
-        delivery_partners: deliveryPartners.count || 0,
-        pending_approvals: pendingApprovals.count || 0,
+        total_users: totalUsers || 0,
+        retailers: retailers || 0,
+        wholesalers: wholesalers || 0,
+        delivery_partners: deliveryPartners || 0,
+        pending_approvals: pendingApprovals || 0,
       },
       error: null,
     }

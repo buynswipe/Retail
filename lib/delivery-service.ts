@@ -1,21 +1,5 @@
 import { supabase } from "./supabase-client"
-import type { Order } from "./order-service"
-
-export interface DeliveryAssignment {
-  id: string
-  order_id: string
-  delivery_partner_id: string | null
-  status: "pending" | "accepted" | "declined" | "completed"
-  delivery_charge: number
-  delivery_charge_gst: number
-  otp: string | null
-  proof_image_url: string | null
-  created_at: string
-  updated_at: string
-  order?: Order
-  delivery_partner_name?: string
-  delivery_partner_phone?: string
-}
+import type { DeliveryAssignment, DeliveryStatus } from "./types"
 
 export interface CreateAssignmentData {
   order_id: string
@@ -54,6 +38,67 @@ export async function createDeliveryAssignment(
     return { data: assignmentResult, error: null }
   } catch (error) {
     console.error("Error creating delivery assignment:", error)
+    return { data: null, error }
+  }
+}
+
+// Get delivery assignments for a delivery partner
+export async function getDeliveryAssignments(
+  deliveryPartnerId: string,
+  status?: DeliveryStatus,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    let query = supabase
+      .from("delivery_assignments")
+      .select(`
+        *,
+        order:order_id(*)
+      `)
+      .eq("delivery_partner_id", deliveryPartnerId)
+
+    if (status) {
+      query = query.eq("status", status)
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching delivery assignments:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error fetching delivery assignments:", error)
+    return { data: null, error }
+  }
+}
+
+// Get available delivery assignments
+export async function getAvailableDeliveryAssignments(
+  pinCode: string,
+): Promise<{ data: DeliveryAssignment[] | null; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from("delivery_assignments")
+      .select(`
+        *,
+        order:order_id(*),
+        retailer:order(retailer_id(*))
+      `)
+      .is("delivery_partner_id", null)
+      .eq("status", "pending")
+      .eq("retailer.pin_code", pinCode)
+      .order("created_at", { ascending: true })
+
+    if (error) {
+      console.error("Error fetching available delivery assignments:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error fetching available delivery assignments:", error)
     return { data: null, error }
   }
 }

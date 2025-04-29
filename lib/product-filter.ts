@@ -1,144 +1,165 @@
-"use server"
-
 import { supabase } from "./supabase-client"
-import type { Product, ProductFilter } from "./types"
+import { errorHandler } from "./error-handler"
+import type { Product } from "./types"
+
+// Types for filter options
+export interface FilterOptions {
+  categories?: string[]
+  minPrice?: number
+  maxPrice?: number
+  wholesalerIds?: string[]
+  inStock?: boolean
+  sortBy?: "price_asc" | "price_desc" | "name_asc" | "name_desc" | "newest"
+  page?: number
+  limit?: number
+}
 
 /**
  * Filter products based on various criteria
- * @param filters The filter criteria
- * @param page The page number for pagination
- * @param pageSize The number of items per page
- * @returns A promise that resolves to an object containing the filtered products and total count
+ * @param options Filter options
+ * @returns Promise with filtered products
  */
-export async function filterProducts(
-  filters: ProductFilter,
-  page = 1,
-  pageSize = 10,
-): Promise<{ products: Product[]; total: number }> {
+export async function filterProducts(options: FilterOptions = {}): Promise<{
+  products: Product[]
+  total: number
+  page: number
+  totalPages: number
+}> {
   try {
-    let query = supabase.from("products").select("*", { count: "exact" })
+    const { categories, minPrice, maxPrice, wholesalerIds, inStock, sortBy = "newest", page = 1, limit = 20 } = options
+
+    // Calculate pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    // Start building the query
+    let query = supabase.from("products").select("*", { count: "exact" }).range(from, to)
 
     // Apply filters
-    if (filters.category) {
-      query = query.eq("category", filters.category)
+    if (categories && categories.length > 0) {
+      query = query.in("category", categories)
     }
 
-    if (filters.minPrice !== undefined) {
-      query = query.gte("price", filters.minPrice)
+    if (minPrice !== undefined) {
+      query = query.gte("price", minPrice)
     }
 
-    if (filters.maxPrice !== undefined) {
-      query = query.lte("price", filters.maxPrice)
+    if (maxPrice !== undefined) {
+      query = query.lte("price", maxPrice)
     }
 
-    if (filters.inStock !== undefined) {
-      query = query.eq("in_stock", filters.inStock)
+    if (wholesalerIds && wholesalerIds.length > 0) {
+      query = query.in("wholesaler_id", wholesalerIds)
     }
 
-    if (filters.search) {
-      query = query.or(`name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
-    }
-
-    if (filters.brands && filters.brands.length > 0) {
-      query = query.in("brand", filters.brands)
+    if (inStock !== undefined) {
+      query = query.eq("in_stock", inStock)
     }
 
     // Apply sorting
-    if (filters.sortBy) {
-      const direction = filters.sortDirection === "desc" ? { ascending: false } : { ascending: true }
-      query = query.order(filters.sortBy, direction)
-    } else {
-      // Default sorting
-      query = query.order("created_at", { ascending: false })
+    switch (sortBy) {
+      case "price_asc":
+        query = query.order("price", { ascending: true })
+        break
+      case "price_desc":
+        query = query.order("price", { ascending: false })
+        break
+      case "name_asc":
+        query = query.order("name", { ascending: true })
+        break
+      case "name_desc":
+        query = query.order("name", { ascending: false })
+        break
+      case "newest":
+      default:
+        query = query.order("created_at", { ascending: false })
+        break
     }
 
-    // Apply pagination
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
-    query = query.range(from, to)
-
+    // Execute the query
     const { data, error, count } = await query
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
 
     return {
-      products: data || [],
-      total: count || 0,
+      products: data as Product[],
+      total: totalCount,
+      page,
+      totalPages,
     }
   } catch (error) {
-    console.error("Error filtering products:", error)
-    return { products: [], total: 0 }
+    return errorHandler(error, "Error filtering products", {
+      products: [],
+      total: 0,
+      page: 1,
+      totalPages: 0,
+    })
   }
 }
 
 /**
- * Get all available product categories
- * @returns A promise that resolves to an array of category names
+ * Get available filter options (categories, price ranges, etc.)
+ * @returns Promise with filter options
  */
-export async function getProductCategories(): Promise<string[]> {
+export async function getFilterOptions(): Promise<{
+  categories: string[]
+  priceRange: { min: number; max: number }
+  wholesalers: { id: string; name: string }[]
+}> {
   try {
-    const { data, error } = await supabase.from("products").select("category").order("category")
+    // Get unique categories
+    const { data: categoryData, error: categoryError } = await supabase
+      .from("products")
+      .select("category")
+      .not("category", "is", null)
 
-    if (error) throw error
+    if (categoryError) throw categoryError
 
-    // Extract unique categories
-    const categories = [...new Set(data?.map((item) => item.category))]
-    return categories.filter(Boolean) as string[]
-  } catch (error) {
-    console.error("Error getting product categories:", error)
-    return []
-  }
-}
-
-/**
- * Get all available product brands
- * @returns A promise that resolves to an array of brand names
- */
-export async function getProductBrands(): Promise<string[]> {
-  try {
-    const { data, error } = await supabase.from("products").select("brand").order("brand")
-
-    if (error) throw error
-
-    // Extract unique brands
-    const brands = [...new Set(data?.map((item) => item.brand))]
-    return brands.filter(Boolean) as string[]
-  } catch (error) {
-    console.error("Error getting product brands:", error)
-    return []
-  }
-}
-
-/**
- * Get price range (min and max) for all products
- * @returns A promise that resolves to an object containing min and max prices
- */
-export async function getProductPriceRange(): Promise<{ min: number; max: number }> {
-  try {
-    // Get min price
-    const { data: minData, error: minError } = await supabase
+    // Get price range
+    const { data: priceData, error: priceError } = await supabase
       .from("products")
       .select("price")
       .order("price", { ascending: true })
-      .limit(1)
 
-    if (minError) throw minError
+    if (priceError) throw priceError
 
-    // Get max price
-    const { data: maxData, error: maxError } = await supabase
-      .from("products")
-      .select("price")
-      .order("price", { ascending: false })
-      .limit(1)
+    // Get wholesalers
+    const { data: wholesalerData, error: wholesalerError } = await supabase
+      .from("users")
+      .select("id, business_name")
+      .eq("role", "wholesaler")
 
-    if (maxError) throw maxError
+    if (wholesalerError) throw wholesalerError
+
+    // Process the results
+    const categories = [...new Set(categoryData.map((item) => item.category))]
+
+    const prices = priceData.map((item) => item.price)
+    const priceRange = {
+      min: Math.min(...prices),
+      max: Math.max(...prices),
+    }
+
+    const wholesalers = wholesalerData.map((item) => ({
+      id: item.id,
+      name: item.business_name,
+    }))
 
     return {
-      min: minData?.[0]?.price || 0,
-      max: maxData?.[0]?.price || 1000,
+      categories,
+      priceRange,
+      wholesalers,
     }
   } catch (error) {
-    console.error("Error getting product price range:", error)
-    return { min: 0, max: 1000 }
+    return errorHandler(error, "Error getting filter options", {
+      categories: [],
+      priceRange: { min: 0, max: 1000 },
+      wholesalers: [],
+    })
   }
 }

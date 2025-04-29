@@ -1,12 +1,11 @@
-"use server"
-
 import { supabase } from "./supabase-client"
+import { errorHandler } from "./error-handler"
 import type { ProductVariant } from "./types"
 
 /**
  * Get all variants for a product
- * @param productId The ID of the product
- * @returns A promise that resolves to an array of product variants
+ * @param productId Product ID to get variants for
+ * @returns Promise with product variants
  */
 export async function getProductVariants(productId: string): Promise<ProductVariant[]> {
   try {
@@ -14,127 +13,113 @@ export async function getProductVariants(productId: string): Promise<ProductVari
       .from("product_variants")
       .select("*")
       .eq("product_id", productId)
-      .order("created_at", { ascending: true })
+      .order("price", { ascending: true })
 
-    if (error) throw error
-    return data || []
+    if (error) {
+      throw error
+    }
+
+    return data as ProductVariant[]
   } catch (error) {
-    console.error("Error getting product variants:", error)
-    return []
-  }
-}
-
-/**
- * Get a specific product variant by ID
- * @param variantId The ID of the variant
- * @returns A promise that resolves to the product variant or null if not found
- */
-export async function getProductVariantById(variantId: string): Promise<ProductVariant | null> {
-  try {
-    const { data, error } = await supabase.from("product_variants").select("*").eq("id", variantId).single()
-
-    if (error) throw error
-    return data
-  } catch (error) {
-    console.error("Error getting product variant:", error)
-    return null
+    return errorHandler(error, "Error getting product variants", [])
   }
 }
 
 /**
  * Create a new product variant
- * @param variant The product variant to create
- * @returns A promise that resolves to the created product variant
+ * @param variant Product variant to create
+ * @returns Promise with created variant
  */
-export async function createProductVariant(
-  variant: Omit<ProductVariant, "id" | "created_at">,
-): Promise<ProductVariant | null> {
+export async function createProductVariant(variant: Omit<ProductVariant, "id">): Promise<ProductVariant> {
   try {
-    const { data, error } = await supabase
-      .from("product_variants")
-      .insert({
-        ...variant,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
+    const { data, error } = await supabase.from("product_variants").insert(variant).select().single()
 
-    if (error) throw error
-    return data
+    if (error) {
+      throw error
+    }
+
+    return data as ProductVariant
   } catch (error) {
-    console.error("Error creating product variant:", error)
-    return null
+    return errorHandler(error, "Error creating product variant", {} as ProductVariant)
   }
 }
 
 /**
- * Update an existing product variant
- * @param variantId The ID of the variant to update
- * @param updates The updates to apply to the variant
- * @returns A promise that resolves to the updated product variant
+ * Update a product variant
+ * @param id Variant ID to update
+ * @param updates Updates to apply
+ * @returns Promise with updated variant
  */
-export async function updateProductVariant(
-  variantId: string,
-  updates: Partial<Omit<ProductVariant, "id" | "created_at">>,
-): Promise<ProductVariant | null> {
+export async function updateProductVariant(id: string, updates: Partial<ProductVariant>): Promise<ProductVariant> {
   try {
-    const { data, error } = await supabase
-      .from("product_variants")
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", variantId)
-      .select()
-      .single()
+    const { data, error } = await supabase.from("product_variants").update(updates).eq("id", id).select().single()
 
-    if (error) throw error
-    return data
+    if (error) {
+      throw error
+    }
+
+    return data as ProductVariant
   } catch (error) {
-    console.error("Error updating product variant:", error)
-    return null
+    return errorHandler(error, "Error updating product variant", {} as ProductVariant)
   }
 }
 
 /**
  * Delete a product variant
- * @param variantId The ID of the variant to delete
- * @returns A promise that resolves to true if successful, false otherwise
+ * @param id Variant ID to delete
+ * @returns Promise with success status
  */
-export async function deleteProductVariant(variantId: string): Promise<boolean> {
+export async function deleteProductVariant(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase.from("product_variants").delete().eq("id", variantId)
+    const { error } = await supabase.from("product_variants").delete().eq("id", id)
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
+
     return true
   } catch (error) {
-    console.error("Error deleting product variant:", error)
-    return false
+    return errorHandler(error, "Error deleting product variant", false)
   }
 }
 
 /**
- * Update variant stock quantity
- * @param variantId The ID of the variant
- * @param quantity The new stock quantity
- * @returns A promise that resolves to the updated product variant
+ * Get default variant for a product
+ * @param productId Product ID to get default variant for
+ * @returns Promise with default variant
  */
-export async function updateVariantStock(variantId: string, quantity: number): Promise<ProductVariant | null> {
+export async function getDefaultVariant(productId: string): Promise<ProductVariant | null> {
   try {
     const { data, error } = await supabase
       .from("product_variants")
-      .update({
-        stock_quantity: quantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", variantId)
-      .select()
+      .select("*")
+      .eq("product_id", productId)
+      .eq("is_default", true)
       .single()
 
-    if (error) throw error
-    return data
+    if (error) {
+      if (error.code === "PGRST116") {
+        // No rows returned
+        // If no default variant, get the first one
+        const { data: firstVariant, error: firstError } = await supabase
+          .from("product_variants")
+          .select("*")
+          .eq("product_id", productId)
+          .order("price", { ascending: true })
+          .limit(1)
+          .single()
+
+        if (firstError) {
+          return null
+        }
+
+        return firstVariant as ProductVariant
+      }
+      throw error
+    }
+
+    return data as ProductVariant
   } catch (error) {
-    console.error("Error updating variant stock:", error)
-    return null
+    return errorHandler(error, "Error getting default variant", null)
   }
 }

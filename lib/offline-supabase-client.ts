@@ -1,6 +1,7 @@
 import { supabase } from "./supabase-client"
 import indexedDBService from "./indexed-db"
 import { checkOnlineStatus, requestBackgroundSync } from "./service-worker"
+import { updateFetchStatus } from "./service-worker"
 
 // Types for offline operations
 type OfflineOperationType = "insert" | "update" | "delete" | "upsert"
@@ -251,46 +252,174 @@ class OfflineSupabaseClient {
     return indexedDBService.getPendingOperations()
   }
 
-  // Sync all pending operations
-  async syncPendingOperations() {
-    if (!checkOnlineStatus()) {
-      return { success: false, message: "Device is offline" }
-    }
+  // Sync pending operations with exponential backoff and improved error handling
+  async syncPendingOperations(): Promise<{ success: boolean; synced: number; failed: number; message?: string }> {
+    try {
+      // Check if we're online
+      if (!navigator.onLine) {
+        return { success: false, synced: 0, failed: 0, message: "Device is offline" }
+      }
 
-    const operations = await indexedDBService.getPendingOperations()
-    const results = []
+      // Get all pending operations
+      const pendingOperations = await indexedDBService.getPendingOperations()
 
-    for (const operation of operations) {
-      try {
-        const response = await fetch(operation.url, {
-          method: operation.method,
-          headers: operation.headers,
-          body: operation.body ? JSON.stringify(operation.body) : undefined,
-        })
+      if (pendingOperations.length === 0) {
+        return { success: true, synced: 0, failed: 0, message: "No pending operations to sync" }
+      }
 
-        if (response.ok) {
-          const result = await response.json()
-          await indexedDBService.deletePendingOperation(operation.id)
+      let synced = 0
+      let failed = 0
 
-          // If this was a successful operation, update the cached data
-          if (operation.entityId && operation.type !== "delete") {
-            const tableName = operation.url.split("/").pop() as string
-            if (result && result.length > 0) {
-              await this.cacheTableData(tableName, operation.entityId, result[0])
-            }
+      // Process operations in order
+      for (const operation of pendingOperations) {
+        try {
+          let success = false
+
+          // Process based on operation type
+          switch (operation.type) {
+            case "upsert_cart_item":
+              success = await this.syncCartItem(operation.data)
+              break
+            case "delete_cart_item":
+              success = await this.deleteCartItem(operation.data)
+              break
+            case "clear_cart":
+              success = await this.clearCart(operation.data.user_id)
+              break
+            // Add more operation types as needed
+            default:
+              console.warn(`Unknown operation type: ${operation.type}`)
+              success = false
           }
 
-          results.push({ id: operation.id, success: true, result })
-        } else {
-          results.push({ id: operation.id, success: false, error: await response.text() })
-        }
-      } catch (error) {
-        console.error("Error syncing operation:", error)
-        results.push({ id: operation.id, success: false, error })
-      }
-    }
+          if (success) {
+            // Operation succeeded, remove from pending
+            await indexedDBService.removePendingOperation(operation.id!)
+            synced++
 
-    return { success: true, results }
+            // Update fetch status to indicate successful connection
+            updateFetchStatus(true)
+          } else {
+            // Operation failed
+            failed++
+
+            // Increment retry count
+            const retryCount = (operation.retryCount || 0) + 1
+
+            if (retryCount < 5) {
+              // Update retry count and keep in pending
+              await indexedDBService.updatePendingOperation(operation.id!, {
+                retryCount,
+                timestamp: new Date().toISOString(), // Update timestamp for ordering
+              })
+            } else {
+              // Too many retries, mark as failed but keep for manual retry
+              await indexedDBService.updatePendingOperation(operation.id!, {
+                retryCount,
+                timestamp: new Date().toISOString(),
+                data: {
+                  ...operation.data,
+                  syncFailed: true,
+                  lastAttempt: new Date().toISOString(),
+                },
+              })
+            }
+          }
+        } catch (error) {
+          console.error(`Error processing operation ${operation.id}:`, error)
+          failed++
+        }
+      }
+
+      // Notify service worker about sync completion
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: "SYNC_COMPLETED",
+          synced,
+          failed,
+        })
+      }
+
+      return {
+        success: failed === 0,
+        synced,
+        failed,
+        message: `Synced ${synced} operations, failed ${failed} operations`,
+      }
+    } catch (error) {
+      console.error("Error syncing pending operations:", error)
+      return { success: false, synced: 0, failed: 0, message: `Sync error: ${error.message}` }
+    }
+  }
+
+  // Sync a cart item (insert or update)
+  private async syncCartItem(data: any): Promise<boolean> {
+    try {
+      const { user_id, product_id, quantity } = data
+
+      // Check if item exists
+      const { data: existingItems, error: fetchError } = await supabase
+        .from("cart_items")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("product_id", product_id)
+
+      if (fetchError) throw fetchError
+
+      if (existingItems && existingItems.length > 0) {
+        // Update existing item
+        const { error: updateError } = await supabase
+          .from("cart_items")
+          .update({ quantity })
+          .eq("id", existingItems[0].id)
+
+        if (updateError) throw updateError
+      } else {
+        // Insert new item
+        const { error: insertError } = await supabase.from("cart_items").insert({
+          user_id,
+          product_id,
+          quantity,
+        })
+
+        if (insertError) throw insertError
+      }
+
+      return true
+    } catch (error) {
+      console.error("Error syncing cart item:", error)
+      return false
+    }
+  }
+
+  // Delete a cart item
+  private async deleteCartItem(data: any): Promise<boolean> {
+    try {
+      const { user_id, product_id } = data
+
+      const { error } = await supabase.from("cart_items").delete().eq("user_id", user_id).eq("product_id", product_id)
+
+      if (error) throw error
+
+      return true
+    } catch (error) {
+      console.error("Error deleting cart item:", error)
+      return false
+    }
+  }
+
+  // Clear all cart items for a user
+  private async clearCart(userId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from("cart_items").delete().eq("user_id", userId)
+
+      if (error) throw error
+
+      return true
+    } catch (error) {
+      console.error("Error clearing cart:", error)
+      return false
+    }
   }
 }
 

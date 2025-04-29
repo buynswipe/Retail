@@ -46,25 +46,48 @@ export async function createNotification(notification: {
   }
 }
 
-// Get notifications for a user
+// Get notifications for a user with improved error handling
 export async function getNotifications(userId: string): Promise<{ data: Notification[] | null; error: any }> {
   try {
-    const { data, error } = await supabase
+    // Check if supabase client is initialized
+    if (!supabase) {
+      console.error("Supabase client is not initialized")
+      return { data: null, error: new Error("Database client not initialized") }
+    }
+
+    // Check if userId is valid
+    if (!userId) {
+      console.error("Invalid user ID provided to getNotifications")
+      return { data: null, error: new Error("Invalid user ID") }
+    }
+
+    // Add timeout to prevent hanging requests
+    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) =>
+      setTimeout(() => reject({ data: null, error: new Error("Request timeout") }), 10000),
+    )
+
+    // Actual fetch request
+    const fetchPromise = supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50)
 
-    if (error) {
-      console.error("Error fetching notifications:", error)
-      return { data: null, error }
+    // Race between timeout and actual fetch
+    const result = await Promise.race([fetchPromise, timeoutPromise])
+
+    // Handle the result
+    if ("error" in result && result.error) {
+      console.error("Error fetching notifications:", result.error)
+      return { data: null, error: result.error }
     }
 
-    return { data, error: null }
+    return { data: result.data || [], error: null }
   } catch (error) {
     console.error("Error fetching notifications:", error)
-    return { data: null, error }
+    // Return empty array instead of null to prevent UI errors
+    return { data: [], error }
   }
 }
 
@@ -123,9 +146,15 @@ export async function deleteNotification(notificationId: string): Promise<{ succ
   }
 }
 
-// Get unread notification count
+// Get unread notification count with improved error handling
 export async function getUnreadNotificationCount(userId: string): Promise<{ count: number; error: any }> {
   try {
+    // Check if userId is valid
+    if (!userId) {
+      console.error("Invalid user ID provided to getUnreadNotificationCount")
+      return { count: 0, error: new Error("Invalid user ID") }
+    }
+
     const { count, error } = await supabase
       .from("notifications")
       .select("*", { count: "exact", head: true })
@@ -149,14 +178,24 @@ export async function getNotificationPreferences(
   userId: string,
 ): Promise<{ data: NotificationPreference[] | null; error: any }> {
   try {
-    const { data, error } = await supabase.from("notification_preferences").select("*").eq("user_id", userId)
-
-    if (error) {
-      console.error("Error getting notification preferences:", error)
-      return { data: null, error }
+    if (!userId) {
+      return { data: null, error: new Error("Invalid user ID") }
     }
 
-    return { data, error: null }
+    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) =>
+      setTimeout(() => reject({ data: null, error: new Error("Request timeout") }), 10000),
+    )
+
+    const fetchPromise = supabase.from("notification_preferences").select("*").eq("user_id", userId)
+
+    const result = await Promise.race([fetchPromise, timeoutPromise])
+
+    if ("error" in result && result.error) {
+      console.error("Error getting notification preferences:", result.error)
+      return { data: null, error: result.error }
+    }
+
+    return { data: result.data || [], error: null }
   } catch (error) {
     console.error("Error getting notification preferences:", error)
     return { data: null, error }
@@ -173,6 +212,10 @@ export async function updateNotificationPreference(
   },
 ): Promise<{ success: boolean; error: any }> {
   try {
+    if (!preferenceId) {
+      return { success: false, error: new Error("Invalid preference ID") }
+    }
+
     const { error } = await supabase
       .from("notification_preferences")
       .update({
@@ -196,6 +239,10 @@ export async function updateNotificationPreference(
 // Create default notification preferences for a new user
 export async function createDefaultNotificationPreferences(userId: string): Promise<{ success: boolean; error: any }> {
   try {
+    if (!userId) {
+      return { success: false, error: new Error("Invalid user ID") }
+    }
+
     const defaultPreferences = [
       {
         user_id: userId,
@@ -372,28 +419,51 @@ export function subscribeToNotifications(
   userId: string,
   onNewNotification: (notification: any) => void,
 ): RealtimeChannel {
-  // Subscribe to INSERT events on the notifications table for this user
-  const channel = supabase
-    .channel(`notifications:${userId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications",
-        filter: `user_id=eq.${userId}`,
-      },
-      (payload) => {
-        // Call the callback with the new notification
-        onNewNotification(payload.new)
-      },
-    )
-    .subscribe()
+  if (!userId) {
+    console.error("Invalid user ID provided to subscribeToNotifications")
+    throw new Error("Invalid user ID")
+  }
 
-  return channel
+  try {
+    // Subscribe to INSERT events on the notifications table for this user
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          // Call the callback with the new notification
+          onNewNotification(payload.new)
+        },
+      )
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") {
+          console.warn(`Notification subscription status: ${status}`)
+        }
+      })
+
+    return channel
+  } catch (error) {
+    console.error("Error subscribing to notifications:", error)
+    throw error
+  }
 }
 
 // Unsubscribe from real-time notifications
 export function unsubscribeFromNotifications(channel: RealtimeChannel): void {
-  supabase.removeChannel(channel)
+  if (!channel) {
+    console.warn("Attempted to unsubscribe from null channel")
+    return
+  }
+
+  try {
+    supabase.removeChannel(channel)
+  } catch (error) {
+    console.error("Error unsubscribing from notifications:", error)
+  }
 }

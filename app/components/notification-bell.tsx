@@ -11,8 +11,8 @@ import Link from "next/link"
 import { format, formatDistanceToNow } from "date-fns"
 import { Badge } from "@/components/ui/badge"
 
-export function NotificationBell() {
-  const { notifications, unreadCount, markAsRead } = useNotifications()
+export default function NotificationBell() {
+  const { notifications, unreadCount, markAsRead, loading, error, refreshNotifications } = useNotifications()
   const [open, setOpen] = useState(false)
 
   // Get the 5 most recent notifications
@@ -21,6 +21,11 @@ export function NotificationBell() {
   // Handle notification click
   const handleNotificationClick = async (notificationId: string) => {
     await markAsRead(notificationId)
+  }
+
+  // Handle retry when there's an error
+  const handleRetry = async () => {
+    await refreshNotifications()
   }
 
   // Get icon color based on notification type
@@ -73,11 +78,17 @@ export function NotificationBell() {
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
+          {error ? (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+              !
+            </span>
+          ) : loading ? (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-300 animate-pulse" />
+          ) : unreadCount > 0 ? (
             <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
-          )}
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
@@ -89,7 +100,26 @@ export function NotificationBell() {
         </div>
         <Separator />
         <ScrollArea className="h-[300px]">
-          {recentNotifications.length > 0 ? (
+          {error ? (
+            <div className="flex flex-col items-center justify-center h-full p-4">
+              <p className="text-sm text-red-500 mb-2">Failed to load notifications</p>
+              <Button variant="outline" size="sm" onClick={handleRetry}>
+                Retry
+              </Button>
+            </div>
+          ) : loading ? (
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-1/4 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : recentNotifications.length > 0 ? (
             <div className="space-y-1">
               {recentNotifications.map((notification) => (
                 <div
@@ -132,5 +162,3 @@ export function NotificationBell() {
     </Popover>
   )
 }
-
-export default NotificationBell

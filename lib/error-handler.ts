@@ -100,3 +100,26 @@ export function logError(error: AppError, context?: any): void {
   // In a production app, this would send the error to a monitoring service like Sentry
   console.error("Error:", error, "Context:", context)
 }
+
+/**
+ * Generic error handler function that can be used throughout the application
+ * @param error The error object
+ * @param message Optional custom error message
+ * @param defaultReturn Optional default return value in case of error
+ * @returns The default return value if provided, otherwise undefined
+ */
+export function errorHandler<T>(error: any, message: string, defaultReturn?: T): T {
+  // Convert to AppError if not already
+  const appError = error.type ? (error as AppError) : handleSupabaseError(error)
+
+  // Log the error
+  logError(appError, { message })
+
+  // Display error message if in development
+  if (process.env.NODE_ENV === "development") {
+    console.error(`${message}:`, error)
+  }
+
+  // Return default value if provided
+  return defaultReturn as T
+}

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 import { useAuth } from "./auth-context"
 import {
   getNotifications,
@@ -20,6 +20,7 @@ interface NotificationContextType {
   notifications: Notification[]
   unreadCount: number
   loading: boolean
+  error: Error | null
   markAsRead: (notificationId: string) => Promise<void>
   markAllAsRead: () => Promise<void>
   deleteNotification: (notificationId: string) => Promise<void>
@@ -33,28 +34,63 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
   const [realtimeChannel, setRealtimeChannel] = useState<RealtimeChannel | null>(null)
   const { toast } = useToast()
+  const [retryCount, setRetryCount] = useState(0)
+  const maxRetries = 3
 
-  // Load notifications and unread count
-  const loadNotifications = async () => {
+  // Load notifications and unread count with retry mechanism
+  const loadNotifications = useCallback(async () => {
     if (!user) return
 
     setLoading(true)
+    setError(null)
+
     try {
-      const { data } = await getNotifications(user.id)
-      if (data) {
-        setNotifications(data)
+      // Get notifications
+      const { data, error: notificationError } = await getNotifications(user.id)
+
+      if (notificationError) {
+        console.error("Error loading notifications:", notificationError)
+        setError(notificationError instanceof Error ? notificationError : new Error(String(notificationError)))
+
+        // Retry logic for network errors
+        if (
+          retryCount < maxRetries &&
+          (notificationError.message?.includes("Failed to fetch") || notificationError.message?.includes("timeout"))
+        ) {
+          setRetryCount((prev) => prev + 1)
+          setTimeout(() => loadNotifications(), 2000 * Math.pow(2, retryCount)) // Exponential backoff
+          return
+        }
+      } else {
+        // Reset retry count on success
+        setRetryCount(0)
+        setNotifications(data || [])
       }
 
-      const { count } = await getUnreadNotificationCount(user.id)
-      setUnreadCount(count)
-    } catch (error) {
-      console.error("Error loading notifications:", error)
+      // Get unread count - continue even if notifications failed
+      const { count, error: countError } = await getUnreadNotificationCount(user.id)
+
+      if (countError) {
+        console.error("Error loading unread count:", countError)
+      } else {
+        setUnreadCount(count)
+      }
+    } catch (err) {
+      console.error("Unexpected error in loadNotifications:", err)
+      setError(err instanceof Error ? err : new Error(String(err)))
+
+      // Retry on unexpected errors
+      if (retryCount < maxRetries) {
+        setRetryCount((prev) => prev + 1)
+        setTimeout(() => loadNotifications(), 2000 * Math.pow(2, retryCount))
+      }
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, retryCount, maxRetries])
 
   // Set up real-time subscription when user changes
   useEffect(() => {
@@ -63,31 +99,43 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Load initial notifications
     loadNotifications()
 
+    // Clean up function to handle unsubscription
+    let channel: RealtimeChannel | null = null
+
     // Subscribe to real-time notifications
-    const channel = subscribeToNotifications(user.id, (newNotification) => {
-      // Add the new notification to the state
-      setNotifications((prev) => [newNotification, ...prev])
+    try {
+      channel = subscribeToNotifications(user.id, (newNotification) => {
+        // Add the new notification to the state
+        setNotifications((prev) => [newNotification, ...prev])
 
-      // Increment unread count
-      setUnreadCount((prev) => prev + 1)
+        // Increment unread count
+        setUnreadCount((prev) => prev + 1)
 
-      // Show a toast notification
-      toast({
-        title: getNotificationTypeTitle(newNotification.type),
-        description: newNotification.message,
-        variant: getNotificationVariant(newNotification.priority),
+        // Show a toast notification
+        toast({
+          title: getNotificationTypeTitle(newNotification.type),
+          description: newNotification.message,
+          variant: getNotificationVariant(newNotification.priority),
+        })
       })
-    })
 
-    setRealtimeChannel(channel)
+      setRealtimeChannel(channel)
+    } catch (err) {
+      console.error("Error setting up notification subscription:", err)
+      setError(err instanceof Error ? err : new Error(String(err)))
+    }
 
     // Clean up subscription on unmount or when user changes
     return () => {
       if (channel) {
-        unsubscribeFromNotifications(channel)
+        try {
+          unsubscribeFromNotifications(channel)
+        } catch (err) {
+          console.error("Error unsubscribing from notifications:", err)
+        }
       }
     }
-  }, [user])
+  }, [user, toast, loadNotifications])
 
   // Mark a notification as read
   const markAsRead = async (notificationId: string) => {
@@ -105,6 +153,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       }
     } catch (error) {
       console.error("Error marking notification as read:", error)
+      toast({
+        title: "Error",
+        description: "Failed to mark notification as read. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -119,9 +172,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })))
         // Reset unread count
         setUnreadCount(0)
+
+        toast({
+          title: "Success",
+          description: "All notifications marked as read",
+        })
       }
     } catch (error) {
       console.error("Error marking all notifications as read:", error)
+      toast({
+        title: "Error",
+        description: "Failed to mark all notifications as read. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -138,14 +201,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (deletedNotification && !deletedNotification.is_read) {
           setUnreadCount((prev) => Math.max(0, prev - 1))
         }
+
+        toast({
+          title: "Success",
+          description: "Notification deleted",
+        })
       }
     } catch (error) {
       console.error("Error deleting notification:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete notification. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
   // Refresh notifications
   const refreshNotifications = async () => {
+    setRetryCount(0) // Reset retry count on manual refresh
     await loadNotifications()
   }
 
@@ -183,6 +257,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         notifications,
         unreadCount,
         loading,
+        error,
         markAsRead,
         markAllAsRead,
         deleteNotification: handleDeleteNotification,

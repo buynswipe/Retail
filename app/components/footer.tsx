@@ -14,7 +14,7 @@ export default function Footer() {
           {/* Logo and Description */}
           <div className="md:col-span-1">
             <Link href="/" className="flex items-center space-x-2 mb-4">
-              <span className="font-bold text-2xl text-blue-600">RetailBandhu</span>
+              <span className="font-bold text-2xl text-blue-600">Retail Bandhu</span>
             </Link>
             <p className="text-lg text-gray-600 max-w-xs">
               Connecting retailers, wholesalers, and delivery partners for a streamlined FMCG supply chain.

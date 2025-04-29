@@ -146,7 +146,7 @@ function NavbarContent() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <span className="text-xl font-bold text-blue-600">RetailBandhu</span>
+              <span className="text-xl font-bold text-blue-600">Retail Bandhu</span>
             </Link>
           </div>
 

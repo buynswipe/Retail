@@ -62,7 +62,8 @@
     "country-flag-icons": "latest",
     "@supabase/supabase-js": "latest",
     "papaparse": "latest",
-    "jspdf-autotable": "latest"
+    "jspdf-autotable": "latest",
+    "uuid": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

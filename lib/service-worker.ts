@@ -1,36 +1,48 @@
 export function registerServiceWorker() {
   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-    // Check if we're in the v0 preview environment
-    const isV0Preview = window.location.hostname.includes("vusercontent.net")
-
-    // Skip service worker registration in v0 preview
-    if (isV0Preview) {
-      console.log("Skipping Service Worker registration in v0 preview environment")
-      return
-    }
-
     window.addEventListener("load", () => {
       navigator.serviceWorker
         .register("/sw.js")
         .then((registration) => {
-          console.log("Service Worker registered: ", registration)
+          console.log("Service Worker registered with scope:", registration.scope)
+
+          // Check for updates every hour
+          setInterval(
+            () => {
+              registration.update()
+            },
+            60 * 60 * 1000,
+          )
+
+          // Listen for controller change to notify user of new content
+          let refreshing = false
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (refreshing) return
+            refreshing = true
+
+            // Show notification to user that new content is available
+            if (document.getElementById("update-notification")) {
+              document.getElementById("update-notification")!.classList.remove("hidden")
+            } else {
+              const notification = document.createElement("div")
+              notification.id = "update-notification"
+              notification.className = "fixed bottom-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50"
+              notification.innerHTML = `
+                <p>New content is available!</p>
+                <button class="mt-2 bg-white text-blue-600 px-4 py-1 rounded">Refresh</button>
+              `
+              document.body.appendChild(notification)
+
+              notification.querySelector("button")?.addEventListener("click", () => {
+                window.location.reload()
+              })
+            }
+          })
         })
-        .catch((registrationError) => {
-          console.log("Service Worker registration failed: ", registrationError)
+        .catch((error) => {
+          console.error("Service Worker registration failed:", error)
         })
     })
-  }
-}
-
-export function unregisterServiceWorker() {
-  if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.ready
-      .then((registration) => {
-        registration.unregister()
-      })
-      .catch((error) => {
-        console.error(error.message)
-      })
   }
 }
 
@@ -77,74 +89,55 @@ export function updateFetchStatus(success: boolean): void {
   }
 }
 
-// Update the requestBackgroundSync function with better error handling
-export function requestBackgroundSync() {
-  if (typeof window !== "undefined" && "serviceWorker" in navigator && "SyncManager" in window) {
-    // Check if we're in the v0 preview environment
-    const isV0Preview = window.location.hostname.includes("vusercontent.net")
+// Function to check if app can work offline
+export function checkOfflineCapability(): boolean {
+  if (typeof window === "undefined") return false
 
-    // Skip background sync in v0 preview
-    if (isV0Preview) {
-      console.log("Background sync not available in v0 preview environment")
-      return Promise.resolve(false)
-    }
+  // Check if service worker is supported and registered
+  const isServiceWorkerRegistered = "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller)
 
-    return navigator.serviceWorker.ready
-      .then((registration) => {
-        return registration.sync
-          .register("sync-pending-operations")
-          .then(() => true)
-          .catch((err) => {
-            console.error("Background sync could not be registered:", err)
-            return false
-          })
-      })
-      .catch((err) => {
-        console.error("Service worker not ready for background sync:", err)
-        return false
-      })
-  }
+  // Check if IndexedDB is available
+  const isIndexedDBAvailable = "indexedDB" in window
 
-  return Promise.resolve(false)
+  // Check if Cache API is available
+  const isCacheAvailable = "caches" in window
+
+  return isServiceWorkerRegistered && isIndexedDBAvailable && isCacheAvailable
 }
 
-// Add a function to check if service worker and background sync are supported
-export function checkBackgroundSyncSupport(): { serviceWorker: boolean; backgroundSync: boolean } {
-  if (typeof window === "undefined") {
-    return { serviceWorker: false, backgroundSync: false }
-  }
+// Function to prefetch critical resources
+export async function prefetchCriticalResources(resources: string[]) {
+  if (!("caches" in window)) return
 
-  const serviceWorkerSupported = "serviceWorker" in navigator
-  const backgroundSyncSupported = "SyncManager" in window
-
-  return {
-    serviceWorker: serviceWorkerSupported,
-    backgroundSync: backgroundSyncSupported,
+  try {
+    const cache = await caches.open("critical-resources")
+    await cache.addAll(resources)
+    console.log("Critical resources prefetched successfully")
+  } catch (error) {
+    console.error("Failed to prefetch critical resources:", error)
   }
 }
 
-// Add a function to manually trigger sync of pending operations
-export async function syncPendingOperations() {
-  if (typeof window !== "undefined") {
-    try {
-      // First try background sync if available
-      const syncSupport = checkBackgroundSyncSupport()
-      if (syncSupport.serviceWorker && syncSupport.backgroundSync) {
-        const registered = await requestBackgroundSync()
-        if (registered) {
-          return { success: true, method: "background-sync" }
-        }
-      }
+// Function to request background sync for offline operations
+export async function requestBackgroundSync(tag = "sync-pending-operations"): Promise<boolean> {
+  if (typeof window === "undefined") return false
 
-      // Fall back to manual sync via the offline-supabase-client
-      const offlineSupabase = (await import("./offline-supabase-client")).default
-      const result = await offlineSupabase.syncPendingOperations()
-      return { ...result, method: "manual-sync" }
-    } catch (error) {
-      console.error("Error syncing pending operations:", error)
-      return { success: false, error, method: "failed" }
-    }
+  // Check if service worker and background sync are supported
+  if (!("serviceWorker" in navigator) || !("SyncManager" in window)) {
+    console.warn("Background sync is not supported in this browser")
+    return false
   }
 
-  return { success: false, error: "Not in browser environment", method: "failed" }
+  try {
+    // Get the service worker registration
+    const registration = await navigator.serviceWorker.ready
+
+    // Register for background sync with the given tag
+    await registration.sync.register(tag)
+    console.log(`Background sync registered with tag: ${tag}`)
+    return true
+  } catch (error) {
+    console.error("Failed to register background sync:", error)
+    return false
+  }
 }

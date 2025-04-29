@@ -1,118 +1,75 @@
 "use client"
 
-import Image from "next/image"
 import { useState, useEffect } from "react"
+import Image, { type ImageProps } from "next/image"
 import { cn } from "@/lib/utils"
 
-interface OptimizedImageProps {
-  src: string
-  alt: string
-  width?: number
-  height?: number
+interface OptimizedImageProps extends Omit<ImageProps, "onLoad" | "onError"> {
+  fallbackSrc?: string
+  lowQualitySrc?: string
   className?: string
-  priority?: boolean
-  quality?: number
-  sizes?: string
-  fill?: boolean
-  placeholder?: "blur" | "empty"
-  blurDataURL?: string
-  onLoad?: () => void
-  onError?: () => void
+  containerClassName?: string
+  loadingClassName?: string
 }
 
 export default function OptimizedImage({
   src,
   alt,
-  width,
-  height,
+  fallbackSrc = "/placeholder.png",
+  lowQualitySrc,
   className,
+  containerClassName,
+  loadingClassName,
   priority = false,
-  quality = 75,
-  sizes,
-  fill = false,
-  placeholder,
-  blurDataURL,
-  onLoad,
-  onError,
+  ...props
 }: OptimizedImageProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [imageSrc, setImageSrc] = useState(src)
+  const [isLoading, setIsLoading] = useState(!priority)
+  const [imgSrc, setImgSrc] = useState(lowQualitySrc || src)
+  const [isError, setIsError] = useState(false)
 
-  // Generate a blur data URL if not provided and placeholder is 'blur'
-  const generatedBlurDataURL =
-    placeholder === "blur" && !blurDataURL
-      ? "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciPjxzdG9wIHN0b3AtY29sb3I9IiNlZWUiIG9mZnNldD0iMjAlIiAvPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiIG9mZnNldD0iNTAlIiAvPjxzdG9wIHN0b3AtY29sb3I9IiNlZWUiIG9mZnNldD0iNzAlIiAvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIiBmaWxsPSIjZWVlIiAvPjxyZWN0IGlkPSJyIiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0idXJsKCNnKSIgLz48YW5pbWF0ZSB4bGluazpocmVmPSIjciIgYXR0cmlidXRlTmFtZT0ieCI8L2FuaW1hdGU+PC9zdmc+"
-      : blurDataURL
-
-  // Handle image load
-  const handleImageLoad = () => {
-    setIsLoading(false)
-    if (onLoad) onLoad()
-  }
-
-  // Handle image error
-  const handleImageError = () => {
-    setError(true)
-    setIsLoading(false)
-    if (onError) onError()
-
-    // Set fallback image
-    setImageSrc("/placeholder.png")
-  }
-
-  // Reset state when src changes
+  // When src changes, reset loading state if not priority
   useEffect(() => {
-    setImageSrc(src)
-    setIsLoading(true)
-    setError(false)
-  }, [src])
+    if (!priority) {
+      setIsLoading(true)
+    }
+    setImgSrc(lowQualitySrc || src)
+    setIsError(false)
+  }, [src, lowQualitySrc, priority])
 
   return (
-    <div className={cn("relative overflow-hidden", isLoading && "animate-pulse bg-gray-200", className)}>
+    <div className={cn("relative overflow-hidden", containerClassName)}>
+      {isLoading && !priority && (
+        <div
+          className={cn(
+            "absolute inset-0 bg-gray-200 animate-pulse rounded-md flex items-center justify-center",
+            loadingClassName,
+          )}
+        >
+          <span className="sr-only">Loading image</span>
+        </div>
+      )}
       <Image
-        src={imageSrc || "/placeholder.svg"}
+        src={isError ? fallbackSrc : imgSrc}
         alt={alt}
-        width={width}
-        height={height}
-        className={cn("transition-opacity duration-300", isLoading ? "opacity-0" : "opacity-100")}
-        priority={priority}
-        quality={quality}
-        sizes={sizes}
-        fill={fill}
-        placeholder={placeholder}
-        blurDataURL={generatedBlurDataURL}
-        onLoad={handleImageLoad}
-        onError={handleImageError}
+        className={cn(
+          "transition-opacity duration-300",
+          isLoading && !priority ? "opacity-0" : "opacity-100",
+          className,
+        )}
+        onLoad={() => {
+          // If we were showing a low quality image, now load the high quality one
+          if (lowQualitySrc && imgSrc === lowQualitySrc) {
+            setImgSrc(src)
+          } else {
+            setIsLoading(false)
+          }
+        }}
+        onError={() => {
+          setIsError(true)
+          setIsLoading(false)
+        }}
+        {...props}
       />
-
-      {/* Loading indicator */}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && !isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 p-4 text-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-10 w-10 text-gray-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <p className="mt-2 text-sm text-gray-600">Image failed to load</p>
-        </div>
-      )}
     </div>
   )
 }

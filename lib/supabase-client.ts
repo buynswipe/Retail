@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { getFromMemoryCache, setInMemoryCache, generateCacheKey } from "./cache-utils"
 
 // Add this function to check for localStorage values in the browser environment
 function getBrowserEnvVar(key: string): string | undefined {
@@ -24,6 +25,66 @@ const isMissingEnvVars =
 
 // Create the Supabase client
 export const supabase = isMissingEnvVars ? createMockSupabaseClient() : createClient(supabaseUrl, supabaseAnonKey)
+
+// Cached version of supabase select
+export async function cachedSelect<T = any>(
+  table: string,
+  options: {
+    columns?: string
+    filter?: string
+    order?: string
+    limit?: number
+    ttlSeconds?: number
+    forceRefresh?: boolean
+  } = {},
+): Promise<T[]> {
+  const { columns = "*", filter, order, limit, ttlSeconds = 60, forceRefresh = false } = options
+
+  // Generate cache key
+  const cacheKey = generateCacheKey({
+    type: "select",
+    table,
+    columns,
+    filter,
+    order,
+    limit,
+  })
+
+  // Check cache first if not forcing refresh
+  if (!forceRefresh) {
+    const cached = getFromMemoryCache<T[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+  }
+
+  // Build query
+  let query = supabase.from(table).select(columns)
+
+  if (filter) {
+    query = query.filter(filter)
+  }
+
+  if (order) {
+    query = query.order(order)
+  }
+
+  if (limit) {
+    query = query.limit(limit)
+  }
+
+  // Execute query
+  const { data, error } = await query
+
+  if (error) {
+    throw error
+  }
+
+  // Cache result
+  setInMemoryCache(cacheKey, data, ttlSeconds)
+
+  return data as T[]
+}
 
 // Mock Supabase client for development/preview when environment variables are not available
 function createMockSupabaseClient() {

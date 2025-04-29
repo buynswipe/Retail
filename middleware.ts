@@ -1,31 +1,53 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-// This function can be marked `async` if using `await` inside
+// Define cacheable paths
+const CACHEABLE_PATHS = ["/", "/login", "/signup", "/about", "/faq", "/help", "/contact"]
+
+// Define static asset patterns
+const STATIC_ASSET_PATTERNS = [/\.(jpg|jpeg|png|gif|svg|webp|avif)$/, /\.(css|js)$/, /^\/fonts\//, /^\/icons\//]
+
 export function middleware(request: NextRequest) {
-  // Get the pathname
-  const path = request.nextUrl.pathname
+  const { pathname } = request.nextUrl
 
-  // Define public paths that don't require authentication
-  const isPublicPath = path === "/" || path === "/login" || path === "/signup" || path.startsWith("/onboarding/")
-
-  // Check if user is logged in
-  const hasAuthCookie = request.cookies.has("currentUser")
-
-  // If trying to access a protected route without being logged in
-  if (!isPublicPath && !hasAuthCookie) {
-    return NextResponse.redirect(new URL("/login", request.url))
+  // Skip API routes and authenticated routes
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/retailer/") ||
+    pathname.startsWith("/wholesaler/") ||
+    pathname.startsWith("/delivery/") ||
+    pathname.startsWith("/admin/")
+  ) {
+    return NextResponse.next()
   }
 
-  // If trying to access login/signup while logged in
-  if ((path === "/login" || path === "/signup") && hasAuthCookie) {
-    return NextResponse.redirect(new URL("/", request.url))
+  // Check if path is cacheable
+  const isCacheablePath = CACHEABLE_PATHS.includes(pathname)
+
+  // Check if request is for a static asset
+  const isStaticAsset = STATIC_ASSET_PATTERNS.some((pattern) => pattern.test(pathname))
+
+  // Set cache headers for cacheable paths and static assets
+  if (isCacheablePath || isStaticAsset) {
+    const response = NextResponse.next()
+
+    // Set cache control headers
+    response.headers.set(
+      "Cache-Control",
+      isStaticAsset
+        ? "public, max-age=31536000, immutable" // 1 year for static assets
+        : "public, s-maxage=60, stale-while-revalidate=600", // 1 minute with 10 minute stale-while-revalidate
+    )
+
+    return response
   }
 
   return NextResponse.next()
 }
 
-// See "Matching Paths" below to learn more
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  matcher: [
+    // Match all paths except for API routes that require authentication
+    "/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
+  ],
 }

@@ -257,7 +257,7 @@ function RetailerBrowseContent() {
   const [categories, setCategories] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState({ min: 0, max: 5000 })
   const [showFilters, setShowFilters] = useState(false)
-  const { addToCart, updateCartItem, cartItems } = useCart()
+  const { addToCart, updateCartItem, cartItems = [] } = useCart()
   const { isOffline } = useOffline()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -359,7 +359,7 @@ function RetailerBrowseContent() {
         <Button asChild variant="outline" className="hidden md:flex">
           <Link href="/retailer/checkout">
             <ShoppingCart className="mr-2 h-5 w-5" />
-            Cart ({cartItems.length})
+            Cart ({cartItems?.length || 0})
           </Link>
         </Button>
       </div>
@@ -406,6 +406,7 @@ function RetailerBrowseContent() {
           <Button asChild className="md:hidden h-12 bg-blue-600 hover:bg-blue-700">
             <Link href="/retailer/checkout">
               <ShoppingCart className="h-5 w-5" />
+              {cartItems?.length > 0 && <span className="ml-1">{cartItems.length}</span>}
             </Link>
           </Button>
         </div>
@@ -466,7 +467,7 @@ function RetailerBrowseContent() {
             <ProductSkeleton key={index} />
           ))}
         </div>
-      ) : filteredProducts.length > 0 ? (
+      ) : filteredProducts?.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} onAddToCart={handleAddToCart} />

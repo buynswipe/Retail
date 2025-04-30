@@ -14,6 +14,9 @@ import Link from "next/link"
 import { getOrdersByWholesaler } from "@/lib/order-service"
 import type { Order } from "@/lib/order-service"
 
+// Import the ProtectedRoute component at the top of the file
+import ProtectedRoute from "@/app/components/protected-route"
+
 function WholesalerDashboardContent() {
   const { t } = useTranslation()
   const [orderCount, setOrderCount] = useState(0)
@@ -313,13 +316,15 @@ function WholesalerDashboardContent() {
 
 export default function WholesalerDashboard() {
   return (
-    <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <WholesalerDashboardContent />
-        </main>
-      </div>
-    </TranslationProvider>
+    <ProtectedRoute requiredRole="wholesaler">
+      <TranslationProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-20 pb-20 px-4">
+            <WholesalerDashboardContent />
+          </main>
+        </div>
+      </TranslationProvider>
+    </ProtectedRoute>
   )
 }

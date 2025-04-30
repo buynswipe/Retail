@@ -51,9 +51,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <ClientInit />
       <AuthProvider>
         <NotificationProvider>
-          <CartProvider>
-            <OfflineProvider>{children}</OfflineProvider>
-          </CartProvider>
+          <OfflineProvider>
+            <CartProvider>{children}</CartProvider>
+          </OfflineProvider>
         </NotificationProvider>
       </AuthProvider>
     </>

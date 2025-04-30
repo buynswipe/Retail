@@ -14,18 +14,11 @@ import {
   TrendingDown,
   ChevronRight,
   FileCheck,
-  Printer,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
-import {
-  getTaxReports,
-  getTaxSummary,
-  generateTaxReport,
-  updateTaxReportStatus,
-  type TaxReport,
-} from "@/lib/tax-service"
+import { getTaxReports, getTaxSummary, generateTaxReport, downloadTaxReport, type TaxReport } from "@/lib/tax-service"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -38,7 +31,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { format } from "date-fns"
-import { supabase } from "@/lib/supabase-client"
+import { toast } from "@/hooks/use-toast"
+import { TemplateSelector } from "@/components/template-selector"
+import { getUserTemplatePreference, setUserTemplatePreference } from "@/lib/template-service"
+import type { InvoiceTemplateType } from "@/lib/template-service"
 
 function TaxContent() {
   const { t } = useTranslation()
@@ -51,29 +47,46 @@ function TaxContent() {
   const [activeTab, setActiveTab] = useState("summary")
   const [isGenerating, setIsGenerating] = useState(false)
   const [reportType, setReportType] = useState<"monthly" | "quarterly" | "yearly">("monthly")
-  const [tableExists, setTableExists] = useState(true)
+  const [previewType, setPreviewType] = useState<"standard" | "detailed" | null>(null)
+  const [defaultTemplate, setDefaultTemplate] = useState<InvoiceTemplateType>("standard")
 
   useEffect(() => {
     if (user) {
-      checkTableExists()
       loadReports()
       loadTaxSummaries()
     }
   }, [user])
 
-  const checkTableExists = async () => {
-    try {
-      const { error } = await supabase.from("tax_reports").select("id").limit(1)
+  useEffect(() => {
+    if (user) {
+      loadTemplatePreference()
+    }
+  }, [user])
 
-      if (error && error.message.includes("does not exist")) {
-        console.log("Tax reports table doesn't exist")
-        setTableExists(false)
-      } else {
-        setTableExists(true)
-      }
+  const loadTemplatePreference = async () => {
+    if (!user) return
+
+    try {
+      const template = await getUserTemplatePreference(user.id)
+      setDefaultTemplate(template)
     } catch (error) {
-      console.error("Error checking tax_reports table:", error)
-      setTableExists(false)
+      console.error("Error loading template preference:", error)
+    }
+  }
+
+  const handleTemplateChange = async (template: InvoiceTemplateType) => {
+    if (!user) return
+
+    setDefaultTemplate(template)
+    try {
+      await setUserTemplatePreference(user.id, template)
+    } catch (error) {
+      console.error("Error saving template preference:", error)
+      toast({
+        title: "Error",
+        description: "Failed to save template preference. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -82,56 +95,24 @@ function TaxContent() {
 
     setIsLoading(true)
     try {
-      // If user is a demo user or table doesn't exist, use demo data
-      if (user.id.startsWith("user-") || !tableExists) {
-        console.log("Using demo tax reports")
-        const demoReports = [
-          {
-            id: "demo-report-1",
-            user_id: user.id,
-            report_type: "monthly",
-            start_date: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString(),
-            end_date: new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString(),
-            total_sales: 125000,
-            total_tax_collected: 22500,
-            total_tax_paid: 6000,
-            net_tax_liability: 16500,
-            status: "generated",
-            created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 15 * 86400000).toISOString(),
-          },
-          {
-            id: "demo-report-2",
-            user_id: user.id,
-            report_type: "quarterly",
-            start_date: new Date(
-              new Date().getFullYear(),
-              Math.floor((new Date().getMonth() - 3) / 3) * 3,
-              1,
-            ).toISOString(),
-            end_date: new Date(new Date().getFullYear(), Math.floor(new Date().getMonth() / 3) * 3, 0).toISOString(),
-            total_sales: 350000,
-            total_tax_collected: 63000,
-            total_tax_paid: 17500,
-            net_tax_liability: 45500,
-            status: "downloaded",
-            created_at: new Date(Date.now() - 45 * 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-          },
-        ]
-        setReports(demoReports)
-        setIsLoading(false)
-        return
-      }
-
       const { data, error } = await getTaxReports(user.id)
       if (error) {
         console.error("Error loading tax reports:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load tax reports. Please try again.",
+          variant: "destructive",
+        })
       } else if (data) {
         setReports(data)
       }
     } catch (error) {
       console.error("Error loading tax reports:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load tax reports. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -141,40 +122,6 @@ function TaxContent() {
     if (!user) return
 
     try {
-      // If user is a demo user or table doesn't exist, use demo data
-      if (user.id.startsWith("user-") || !tableExists) {
-        console.log("Using demo tax summaries")
-
-        // Monthly summary
-        setMonthlySummary({
-          period: format(new Date(), "MMMM yyyy"),
-          total_sales: 42000,
-          total_tax_collected: 7560,
-          total_tax_paid: 2100,
-          net_tax_liability: 5460,
-        })
-
-        // Quarterly summary
-        setQuarterlySummary({
-          period: `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`,
-          total_sales: 120000,
-          total_tax_collected: 21600,
-          total_tax_paid: 6000,
-          net_tax_liability: 15600,
-        })
-
-        // Yearly summary
-        setYearlySummary({
-          period: new Date().getFullYear().toString(),
-          total_sales: 480000,
-          total_tax_collected: 86400,
-          total_tax_paid: 24000,
-          net_tax_liability: 62400,
-        })
-
-        return
-      }
-
       const { data: monthlyData } = await getTaxSummary(user.id, "wholesaler", "current_month")
       if (monthlyData) {
         setMonthlySummary(monthlyData)
@@ -191,6 +138,11 @@ function TaxContent() {
       }
     } catch (error) {
       console.error("Error loading tax summaries:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load tax summaries. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -199,60 +151,6 @@ function TaxContent() {
 
     setIsGenerating(true)
     try {
-      // If user is a demo user or table doesn't exist, simulate report generation
-      if (user.id.startsWith("user-") || !tableExists) {
-        console.log("Simulating tax report generation")
-
-        // Wait a bit to simulate processing
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-
-        // Create a new demo report
-        const now = new Date()
-        let startDate: Date
-        const endDate = now
-        let reportName: string
-
-        switch (reportType) {
-          case "monthly":
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-            reportName = "Monthly"
-            break
-          case "quarterly":
-            const quarter = Math.floor(now.getMonth() / 3)
-            startDate = new Date(now.getFullYear(), quarter * 3, 1)
-            reportName = "Quarterly"
-            break
-          case "yearly":
-            startDate = new Date(now.getFullYear(), 0, 1)
-            reportName = "Yearly"
-            break
-          default:
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-            reportName = "Monthly"
-        }
-
-        const newReport: TaxReport = {
-          id: `demo-report-${Date.now()}`,
-          user_id: user.id,
-          report_type: reportType,
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-          total_sales: Math.floor(Math.random() * 50000) + 30000,
-          total_tax_collected: Math.floor(Math.random() * 9000) + 5000,
-          total_tax_paid: Math.floor(Math.random() * 3000) + 1000,
-          net_tax_liability: Math.floor(Math.random() * 6000) + 4000,
-          status: "generated",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-
-        setReports((prev) => [newReport, ...prev])
-
-        alert(`${reportName} report generated successfully!`)
-        setIsGenerating(false)
-        return
-      }
-
       let startDate: Date
       const endDate = new Date()
 
@@ -283,14 +181,25 @@ function TaxContent() {
 
       if (error) {
         console.error("Error generating tax report:", error)
-        alert("Failed to generate report. Please try again.")
+        toast({
+          title: "Error",
+          description: "Failed to generate report. Please try again.",
+          variant: "destructive",
+        })
       } else if (data) {
-        alert("Report generated successfully!")
+        toast({
+          title: "Success",
+          description: "Report generated successfully!",
+        })
         loadReports()
       }
     } catch (error) {
       console.error("Error generating tax report:", error)
-      alert("Failed to generate report. Please try again.")
+      toast({
+        title: "Error",
+        description: "Failed to generate report. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsGenerating(false)
     }
@@ -298,31 +207,43 @@ function TaxContent() {
 
   const handleDownloadReport = async (reportId: string) => {
     try {
-      // If user is a demo user or table doesn't exist, simulate download
-      if (user?.id.startsWith("user-") || !tableExists) {
-        console.log("Simulating tax report download")
+      const { success, url, error } = await downloadTaxReport(reportId)
 
-        // Wait a bit to simulate processing
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        // Update the report status in our local state
-        setReports((prev) =>
-          prev.map((report) =>
-            report.id === reportId ? { ...report, status: "downloaded", updated_at: new Date().toISOString() } : report,
-          ),
-        )
-
-        alert("Report downloaded successfully!")
+      if (error) {
+        console.error("Error downloading report:", error)
+        toast({
+          title: "Error",
+          description: "Failed to download report. Please try again.",
+          variant: "destructive",
+        })
         return
       }
 
-      // In a real app, this would download the report
-      await updateTaxReportStatus(reportId, "downloaded")
-      loadReports()
-      alert("Report downloaded successfully!")
+      if (success && url) {
+        // Create a temporary link element and trigger the download
+        const link = document.createElement("a")
+        link.href = url
+        link.setAttribute("download", `tax-report-${reportId}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Report download started!",
+        })
+
+        // Refresh the reports list to show updated status
+        loadReports()
+      }
     } catch (error) {
       console.error("Error downloading report:", error)
-      alert("Failed to download report. Please try again.")
+      toast({
+        title: "Error",
+        description: "Failed to download report. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -363,6 +284,14 @@ function TaxContent() {
       default:
         return <Badge>{status}</Badge>
     }
+  }
+
+  const handleOpenPreview = (type: "standard" | "detailed") => {
+    setPreviewType(type)
+  }
+
+  const handleClosePreview = () => {
+    setPreviewType(null)
   }
 
   return (
@@ -703,38 +632,10 @@ function TaxContent() {
           <Card>
             <CardHeader>
               <CardTitle>Invoice Templates</CardTitle>
+              <CardDescription>Choose your default invoice template for all orders</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold">Standard GST Invoice</h3>
-                        <p className="text-sm text-gray-500">Default template for all orders</p>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Printer className="mr-2 h-4 w-4" />
-                        Preview
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-semibold">Detailed Tax Invoice</h3>
-                        <p className="text-sm text-gray-500">With HSN codes and tax breakup</p>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Printer className="mr-2 h-4 w-4" />
-                        Preview
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              <TemplateSelector defaultTemplate={defaultTemplate} onTemplateChange={handleTemplateChange} />
             </CardContent>
           </Card>
 

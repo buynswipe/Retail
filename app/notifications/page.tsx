@@ -8,14 +8,19 @@ import Navbar from "../components/navbar"
 import { Bell, Trash2, CheckCircle, Filter, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useNotifications } from "@/lib/notification-context"
+import { useAuth } from "@/lib/auth-context"
 import { format } from "date-fns"
 import Link from "next/link"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { getDashboardPath } from "@/lib/navigation-utils"
+import { useRouter } from "next/navigation"
 
 function NotificationsContent() {
   const { t } = useTranslation()
+  const router = useRouter()
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<string>("all")
   const [activeFilter, setActiveFilter] = useState<string>("all")
 
@@ -44,6 +49,18 @@ function NotificationsContent() {
   // Handle delete notification
   const handleDeleteNotification = async (notificationId: string) => {
     await deleteNotification(notificationId)
+  }
+
+  // Handle back button click with error handling
+  const handleBackClick = () => {
+    try {
+      const dashboardPath = getDashboardPath(user?.role, "/")
+      router.push(dashboardPath)
+    } catch (error) {
+      console.error("Navigation error:", error)
+      // Fallback to home page if there's an error
+      router.push("/")
+    }
   }
 
   // Get icon color based on notification type
@@ -83,6 +100,9 @@ function NotificationsContent() {
     return format(new Date(dateString), "MMM d, yyyy h:mm a")
   }
 
+  // Get dashboard path safely
+  const dashboardPath = getDashboardPath(user?.role, "/")
+
   return (
     <div className="container mx-auto max-w-4xl">
       <div className="flex justify-between items-center mb-8">
@@ -91,11 +111,9 @@ function NotificationsContent() {
           <Button asChild variant="outline">
             <Link href="/notification-preferences">Preferences</Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/dashboard">
-              <ArrowLeft className="mr-2 h-5 w-5" />
-              Back
-            </Link>
+          <Button variant="outline" onClick={handleBackClick}>
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Back
           </Button>
         </div>
       </div>

@@ -13,6 +13,9 @@ export interface User {
   is_approved: boolean
   created_at: string
   updated_at?: string
+  profile_image_url?: string
+  status?: "online" | "away" | "offline"
+  email?: string
 }
 
 export type UserRole = "admin" | "retailer" | "wholesaler" | "delivery"

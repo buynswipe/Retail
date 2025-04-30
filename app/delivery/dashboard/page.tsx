@@ -8,6 +8,9 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
 
+// Import the ProtectedRoute component at the top of the file
+import ProtectedRoute from "@/app/components/protected-route"
+
 function DeliveryDashboardContent() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
@@ -146,13 +149,15 @@ function DeliveryDashboardContent() {
 
 export default function DeliveryDashboard() {
   return (
-    <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <DeliveryDashboardContent />
-        </main>
-      </div>
-    </TranslationProvider>
+    <ProtectedRoute requiredRole="delivery">
+      <TranslationProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-20 pb-20 px-4">
+            <DeliveryDashboardContent />
+          </main>
+        </div>
+      </TranslationProvider>
+    </ProtectedRoute>
   )
 }

@@ -13,8 +13,10 @@ import { Toaster } from "@/components/ui/toaster"
 import { useAuth } from "@/lib/auth-context"
 import { getOrderById, updateOrderStatus } from "@/lib/order-service"
 import { getPaymentByOrderId } from "@/lib/payment-service"
-import { ArrowLeft, Package, Calendar, CheckCircle, XCircle, Loader2, Truck } from "lucide-react"
+import { ArrowLeft, Package, Calendar, CheckCircle, XCircle, Loader2, Truck, FileText, Receipt } from "lucide-react"
 import type { Order, Payment } from "@/lib/types"
+import { DispatchReceipt } from "@/app/components/documents/dispatch-receipt"
+import { InvoiceGenerator } from "@/app/components/documents/invoice-generator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +40,10 @@ function OrderDetailsContent() {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
   const [isDispatchDialogOpen, setIsDispatchDialogOpen] = useState(false)
+  const [showDispatchReceipt, setShowDispatchReceipt] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
   const [actionType, setActionType] = useState<"confirm" | "reject" | "dispatch">("confirm")
+  const [orderUpdated, setOrderUpdated] = useState(false)
 
   useEffect(() => {
     if (user && id) {
@@ -54,6 +59,7 @@ function OrderDetailsContent() {
       if (orderError) {
         throw orderError
       }
+
       setOrder(orderData)
 
       // Load payment details
@@ -83,12 +89,48 @@ function OrderDetailsContent() {
       }
 
       if (success) {
+        // Update the local state with the new status
+        setOrder((prevOrder) => {
+          if (!prevOrder) return null
+          return {
+            ...prevOrder,
+            status: status,
+          }
+        })
+
+        // Update localStorage for demo orders
+        if (order.id.startsWith("demo-") && user?.id.startsWith("user-")) {
+          try {
+            const storedOrders = localStorage.getItem(`demo_orders_${user.id}`)
+            if (storedOrders) {
+              const orders = JSON.parse(storedOrders)
+              const updatedOrders = orders.map((o: Order) => {
+                if (o.id === order.id) {
+                  return { ...o, status }
+                }
+                return o
+              })
+              localStorage.setItem(`demo_orders_${user.id}`, JSON.stringify(updatedOrders))
+            }
+          } catch (e) {
+            console.error("Error updating localStorage:", e)
+          }
+        }
+
         toast({
           title: "Order Updated",
           description: `Order has been ${status} successfully.`,
         })
-        // Reload order details to get updated status
-        loadOrderDetails(id as string)
+
+        // Mark that the order was updated
+        setOrderUpdated(true)
+
+        // Show dispatch receipt if order was dispatched
+        if (status === "dispatched") {
+          setTimeout(() => {
+            setShowDispatchReceipt(true)
+          }, 500)
+        }
       }
     } catch (error) {
       console.error("Error updating order status:", error)
@@ -163,6 +205,15 @@ function OrderDetailsContent() {
     })
   }
 
+  const handleBackToOrders = () => {
+    // Navigate back with status update information if the order was updated
+    if (order && orderUpdated) {
+      router.push(`/wholesaler/orders?updatedOrderId=${order.id}&newStatus=${order.status}`)
+    } else {
+      router.push("/wholesaler/orders")
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
@@ -180,7 +231,7 @@ function OrderDetailsContent() {
         <p className="text-gray-500 mb-6">
           The order you're looking for doesn't exist or you don't have permission to view it.
         </p>
-        <Button onClick={() => router.push("/wholesaler/orders")}>
+        <Button onClick={handleBackToOrders}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Orders
         </Button>
@@ -191,7 +242,7 @@ function OrderDetailsContent() {
   return (
     <div className="container mx-auto max-w-4xl">
       <div className="flex items-center mb-6">
-        <Button variant="outline" onClick={() => router.push("/wholesaler/orders")} className="mr-4">
+        <Button variant="outline" onClick={handleBackToOrders} className="mr-4">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -233,6 +284,20 @@ function OrderDetailsContent() {
               <Button onClick={openDispatchDialog} className="bg-purple-500 hover:bg-purple-600" disabled={isUpdating}>
                 <Truck className="mr-2 h-4 w-4" />
                 Dispatch Order
+              </Button>
+            </div>
+          )}
+
+          {/* Document generation buttons */}
+          {(order.status === "dispatched" || order.status === "delivered") && (
+            <div className="mt-4 flex flex-wrap gap-4">
+              <Button onClick={() => setShowDispatchReceipt(true)} variant="outline">
+                <Receipt className="mr-2 h-4 w-4" />
+                Dispatch Receipt
+              </Button>
+              <Button onClick={() => setShowInvoice(true)} variant="outline">
+                <FileText className="mr-2 h-4 w-4" />
+                Generate Invoice
               </Button>
             </div>
           )}
@@ -456,6 +521,12 @@ function OrderDetailsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dispatch Receipt Modal */}
+      {showDispatchReceipt && order && <DispatchReceipt order={order} onClose={() => setShowDispatchReceipt(false)} />}
+
+      {/* Invoice Modal */}
+      {showInvoice && order && <InvoiceGenerator order={order} onClose={() => setShowInvoice(false)} />}
 
       <Toaster />
     </div>

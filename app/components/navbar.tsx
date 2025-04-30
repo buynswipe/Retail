@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import { TranslationProvider, useTranslation } from "./translation-provider"
@@ -38,10 +38,18 @@ import { OfflineStatus } from "./offline-status"
 
 function NavbarContent() {
   const { t } = useTranslation()
-  const { user, logout, isLoading } = useAuth()
+  const { user, logout, isLoading, isAuthenticated } = useAuth()
   const pathname = usePathname()
   const [isScrolled, setIsScrolled] = useState(false)
-  const { items } = useCart()
+  const router = useRouter()
+
+  // Safely access cart items with a try/catch to handle missing context
+  const { items: cartItemsFromContext } = useCart() || { items: [] }
+  const [cartItems, setCartItems] = useState(cartItemsFromContext || [])
+
+  useEffect(() => {
+    setCartItems(cartItemsFromContext || [])
+  }, [cartItemsFromContext])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -118,21 +126,28 @@ function NavbarContent() {
 
   const handleLogout = async () => {
     await logout()
+    // The redirect is now handled in the auth context
   }
 
   const getProfileLink = () => {
-    if (user?.role === "retailer") return "/retailer/profile"
-    if (user?.role === "wholesaler") return "/wholesaler/profile"
-    if (user?.role === "delivery") return "/delivery/profile"
-    if (user?.role === "admin") return "/admin/profile"
-    return "/"
+    if (!user) return "/login"
+
+    if (user.role === "retailer") return "/profile"
+    if (user.role === "wholesaler") return "/profile"
+    if (user.role === "delivery") return "/profile"
+    if (user.role === "admin") return "/profile"
+
+    return "/profile"
   }
 
   const getDashboardLink = () => {
-    if (user?.role === "retailer") return "/retailer/dashboard"
-    if (user?.role === "wholesaler") return "/wholesaler/dashboard"
-    if (user?.role === "delivery") return "/delivery/dashboard"
-    if (user?.role === "admin") return "/admin/dashboard"
+    if (!user) return "/"
+
+    if (user.role === "retailer") return "/retailer/dashboard"
+    if (user.role === "wholesaler") return "/wholesaler/dashboard"
+    if (user.role === "delivery") return "/delivery/dashboard"
+    if (user.role === "admin") return "/admin/dashboard"
+
     return "/"
   }
 
@@ -173,16 +188,16 @@ function NavbarContent() {
 
             <LanguageToggle />
 
-            {user && user.role === "retailer" && (
+            {isAuthenticated && user?.role === "retailer" && (
               <Link href="/retailer/checkout">
                 <Button variant="ghost" className="relative p-2 h-10 w-10">
                   <ShoppingCart className="h-5 w-5" />
-                  {items.length > 0 && (
+                  {cartItems.length > 0 && (
                     <Badge
                       className="absolute -top-1 -right-1 px-1.5 py-0.5 min-w-[1.25rem] h-5 flex items-center justify-center"
                       variant="destructive"
                     >
-                      {items.length}
+                      {cartItems.length}
                     </Badge>
                   )}
                 </Button>
@@ -191,7 +206,7 @@ function NavbarContent() {
 
             {isLoading ? (
               <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse"></div>
-            ) : user ? (
+            ) : isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">

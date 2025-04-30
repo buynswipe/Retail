@@ -27,6 +27,7 @@ function NotificationPreferencesContent() {
   const [preferences, setPreferences] = useState<NotificationPreference[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (user) {
@@ -38,11 +39,68 @@ function NotificationPreferencesContent() {
     if (!user) return
 
     setIsLoading(true)
+    setError(null)
     try {
       const { data, error } = await getNotificationPreferences(user.id)
 
       if (error) {
         console.error("Error loading notification preferences:", error)
+        setError("Failed to load notification preferences. Using default settings.")
+
+        // Create default preferences if there's an error
+        const defaultPrefs = [
+          {
+            id: "temp-pref-1",
+            user_id: user.id,
+            type: "order",
+            email_enabled: true,
+            push_enabled: true,
+            in_app_enabled: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: "temp-pref-2",
+            user_id: user.id,
+            type: "payment",
+            email_enabled: true,
+            push_enabled: true,
+            in_app_enabled: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: "temp-pref-3",
+            user_id: user.id,
+            type: "chat",
+            email_enabled: false,
+            push_enabled: true,
+            in_app_enabled: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: "temp-pref-4",
+            user_id: user.id,
+            type: "system",
+            email_enabled: true,
+            push_enabled: false,
+            in_app_enabled: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: "temp-pref-5",
+            user_id: user.id,
+            type: "delivery",
+            email_enabled: true,
+            push_enabled: true,
+            in_app_enabled: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ]
+        setPreferences(defaultPrefs)
         return
       }
 
@@ -50,14 +108,132 @@ function NotificationPreferencesContent() {
         setPreferences(data)
       } else {
         // Create default preferences if none exist
-        await createDefaultNotificationPreferences(user.id)
-        const { data: newData } = await getNotificationPreferences(user.id)
-        if (newData) {
-          setPreferences(newData)
+        try {
+          await createDefaultNotificationPreferences(user.id)
+          const { data: newData } = await getNotificationPreferences(user.id)
+          if (newData) {
+            setPreferences(newData)
+          } else {
+            throw new Error("Failed to create default preferences")
+          }
+        } catch (createError) {
+          console.error("Error creating default preferences:", createError)
+          setError("Failed to create default preferences. Using temporary settings.")
+
+          // Use default preferences if creation fails
+          const defaultPrefs = [
+            {
+              id: "temp-pref-1",
+              user_id: user.id,
+              type: "order",
+              email_enabled: true,
+              push_enabled: true,
+              in_app_enabled: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            {
+              id: "temp-pref-2",
+              user_id: user.id,
+              type: "payment",
+              email_enabled: true,
+              push_enabled: true,
+              in_app_enabled: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            {
+              id: "temp-pref-3",
+              user_id: user.id,
+              type: "chat",
+              email_enabled: false,
+              push_enabled: true,
+              in_app_enabled: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            {
+              id: "temp-pref-4",
+              user_id: user.id,
+              type: "system",
+              email_enabled: true,
+              push_enabled: false,
+              in_app_enabled: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            {
+              id: "temp-pref-5",
+              user_id: user.id,
+              type: "delivery",
+              email_enabled: true,
+              push_enabled: true,
+              in_app_enabled: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ]
+          setPreferences(defaultPrefs)
         }
       }
     } catch (error) {
       console.error("Error loading preferences:", error)
+      setError("Failed to load preferences. Using default settings.")
+
+      // Use default preferences if loading fails
+      const defaultPrefs = [
+        {
+          id: "temp-pref-1",
+          user_id: user.id,
+          type: "order",
+          email_enabled: true,
+          push_enabled: true,
+          in_app_enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "temp-pref-2",
+          user_id: user.id,
+          type: "payment",
+          email_enabled: true,
+          push_enabled: true,
+          in_app_enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "temp-pref-3",
+          user_id: user.id,
+          type: "chat",
+          email_enabled: false,
+          push_enabled: true,
+          in_app_enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "temp-pref-4",
+          user_id: user.id,
+          type: "system",
+          email_enabled: true,
+          push_enabled: false,
+          in_app_enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: "temp-pref-5",
+          user_id: user.id,
+          type: "delivery",
+          email_enabled: true,
+          push_enabled: true,
+          in_app_enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]
+      setPreferences(defaultPrefs)
     } finally {
       setIsLoading(false)
     }
@@ -150,6 +326,15 @@ function NotificationPreferencesContent() {
           </Link>
         </Button>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-800">
+          <p>{error}</p>
+          <p className="text-sm mt-2">
+            Your preferences will be saved temporarily and will reset when you reload the page.
+          </p>
+        </div>
+      )}
 
       <Card className="mb-6">
         <CardHeader>

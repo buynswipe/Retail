@@ -18,13 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
-import {
-  getTaxReports,
-  getTaxSummary,
-  generateTaxReport,
-  updateTaxReportStatus,
-  type TaxReport,
-} from "@/lib/tax-service"
+import { getTaxReports, getTaxSummary, generateTaxReport, downloadTaxReport, type TaxReport } from "@/lib/tax-service"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -37,6 +31,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { format } from "date-fns"
+import { toast } from "@/hooks/use-toast"
 
 function TaxContent() {
   const { t } = useTranslation()
@@ -65,11 +60,21 @@ function TaxContent() {
       const { data, error } = await getTaxReports(user.id)
       if (error) {
         console.error("Error loading tax reports:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load tax reports. Please try again.",
+          variant: "destructive",
+        })
       } else if (data) {
         setReports(data)
       }
     } catch (error) {
       console.error("Error loading tax reports:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load tax reports. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -95,6 +100,11 @@ function TaxContent() {
       }
     } catch (error) {
       console.error("Error loading tax summaries:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load tax summaries. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -133,14 +143,25 @@ function TaxContent() {
 
       if (error) {
         console.error("Error generating tax report:", error)
-        alert("Failed to generate report. Please try again.")
+        toast({
+          title: "Error",
+          description: "Failed to generate report. Please try again.",
+          variant: "destructive",
+        })
       } else if (data) {
-        alert("Report generated successfully!")
+        toast({
+          title: "Success",
+          description: "Report generated successfully!",
+        })
         loadReports()
       }
     } catch (error) {
       console.error("Error generating tax report:", error)
-      alert("Failed to generate report. Please try again.")
+      toast({
+        title: "Error",
+        description: "Failed to generate report. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsGenerating(false)
     }
@@ -148,13 +169,43 @@ function TaxContent() {
 
   const handleDownloadReport = async (reportId: string) => {
     try {
-      // In a real app, this would download the report
-      await updateTaxReportStatus(reportId, "downloaded")
-      loadReports()
-      alert("Report downloaded successfully!")
+      const { success, url, error } = await downloadTaxReport(reportId)
+
+      if (error) {
+        console.error("Error downloading report:", error)
+        toast({
+          title: "Error",
+          description: "Failed to download report. Please try again.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (success && url) {
+        // Create a temporary link element and trigger the download
+        const link = document.createElement("a")
+        link.href = url
+        link.setAttribute("download", `tax-report-${reportId}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Report download started!",
+        })
+
+        // Refresh the reports list to show updated status
+        loadReports()
+      }
     } catch (error) {
       console.error("Error downloading report:", error)
-      alert("Failed to download report. Please try again.")
+      toast({
+        title: "Error",
+        description: "Failed to download report. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 

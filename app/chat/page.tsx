@@ -7,8 +7,10 @@ import { TranslationProvider, useTranslation } from "../components/translation-p
 import Navbar from "../components/navbar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Send, Check, CheckCheck } from "lucide-react"
+import { Send, Check, CheckCheck, Clock } from "lucide-react"
 import VoiceButton from "../components/voice-button"
+import { useAuth } from "@/lib/auth-context"
+import { ChatPresenceProvider, useChatPresence } from "@/lib/chat-presence-context"
 
 interface ChatContact {
   id: string
@@ -18,6 +20,7 @@ interface ChatContact {
   lastMessageTime: string
   unreadCount: number
   avatar?: string
+  status?: "online" | "offline" | "away"
 }
 
 interface ChatMessage {
@@ -30,6 +33,8 @@ interface ChatMessage {
 
 function ChatContent() {
   const { t, language } = useTranslation()
+  const { user } = useAuth()
+  const { activeUsers } = useChatPresence()
   const [contacts, setContacts] = useState<ChatContact[]>([])
   const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -37,12 +42,12 @@ function ChatContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Mock data
+    // Mock data - in a real app, this would come from an API
     const mockContacts: ChatContact[] = [
       {
         id: "1",
         name: "Vikram Singh",
-        role: "wholesaler",
+        role: "wholesaler", // This is a wholesaler
         lastMessage: "Your order has been confirmed",
         lastMessageTime: "10:30 AM",
         unreadCount: 2,
@@ -66,10 +71,57 @@ function ChatContent() {
         unreadCount: 0,
         avatar: "/stylized-admin-panel.png",
       },
+      {
+        id: "4",
+        name: "Rajesh Kumar",
+        role: "retailer", // This is a retailer
+        lastMessage: "I need to place a new order",
+        lastMessageTime: "3 days ago",
+        unreadCount: 0,
+        avatar: "/retail-storefront.png",
+      },
     ]
 
-    setContacts(mockContacts)
-  }, [])
+    // Update contacts with presence information
+    const updatedContacts = mockContacts.map((contact) => {
+      const userPresence = activeUsers.find((u) => u.userId === contact.id)
+      return {
+        ...contact,
+        status: userPresence?.status || "offline",
+      }
+    })
+
+    // Filter contacts based on the current user's role
+    const filteredContacts = updatedContacts.filter((contact) => {
+      // Always show admin contacts
+      if (contact.role === "admin") return true
+
+      // Always show delivery contacts
+      if (contact.role === "delivery") return true
+
+      // If current user is a retailer, show wholesalers
+      if (user?.role === "retailer" && contact.role === "wholesaler") return true
+
+      // If current user is a wholesaler, show retailers
+      if (user?.role === "wholesaler" && contact.role === "retailer") return true
+
+      // Filter out contacts with the same role as the current user
+      // (retailers don't chat with retailers, wholesalers don't chat with wholesalers)
+      if (user?.role === contact.role) return false
+
+      // Filter out the current user
+      if (user?.id === contact.id) return false
+
+      return true
+    })
+
+    // Remove duplicates (same user appearing multiple times)
+    const uniqueContacts = filteredContacts.filter(
+      (contact, index, self) => index === self.findIndex((c) => c.id === contact.id),
+    )
+
+    setContacts(uniqueContacts)
+  }, [activeUsers, user])
 
   useEffect(() => {
     if (selectedContact) {
@@ -167,6 +219,8 @@ function ChatContent() {
     switch (role) {
       case "wholesaler":
         return "Thanks for your message. I will process your order right away."
+      case "retailer":
+        return "Thank you for your response. I'll place my order soon."
       case "delivery":
         return "I will deliver your order as soon as possible."
       case "admin":
@@ -195,6 +249,24 @@ function ChatContent() {
     }
   }
 
+  const getStatusIndicator = (status?: string) => {
+    switch (status) {
+      case "online":
+        return (
+          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-white"></span>
+        )
+      case "away":
+        return (
+          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-yellow-500 border-2 border-white"></span>
+        )
+      case "offline":
+      default:
+        return (
+          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-gray-300 border-2 border-white"></span>
+        )
+    }
+  }
+
   return (
     <div className="container mx-auto max-w-6xl">
       <div className="flex flex-col md:flex-row h-[calc(100vh-136px)]">
@@ -207,14 +279,19 @@ function ChatContent() {
             {contacts.map((contact) => (
               <div
                 key={contact.id}
-                className={`p-4 hover:bg-gray-50 cursor-pointer ${selectedContact?.id === contact.id ? "bg-gray-100" : ""}`}
+                className={`p-4 hover:bg-gray-50 cursor-pointer ${
+                  selectedContact?.id === contact.id ? "bg-gray-100" : ""
+                }`}
                 onClick={() => setSelectedContact(contact)}
               >
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={contact.avatar || "/placeholder.svg"} alt={contact.name} />
-                    <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={contact.avatar || "/placeholder.svg"} alt={contact.name} />
+                      <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    {getStatusIndicator(contact.status)}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
                       <h3 className="font-semibold truncate">{contact.name}</h3>
@@ -242,15 +319,32 @@ function ChatContent() {
             <>
               {/* Chat Header */}
               <div className="p-4 border-b flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={selectedContact.avatar || "/placeholder.svg"} alt={selectedContact.name} />
-                  <AvatarFallback>{selectedContact.name.charAt(0)}</AvatarFallback>
-                </Avatar>
+                <div className="relative">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={selectedContact.avatar || "/placeholder.svg"} alt={selectedContact.name} />
+                    <AvatarFallback>{selectedContact.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  {getStatusIndicator(selectedContact.status)}
+                </div>
                 <div>
                   <h3 className="font-semibold">{selectedContact.name}</h3>
-                  <Badge className={getRoleColor(selectedContact.role)}>
-                    {selectedContact.role.charAt(0).toUpperCase() + selectedContact.role.slice(1)}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getRoleColor(selectedContact.role)}>
+                      {selectedContact.role.charAt(0).toUpperCase() + selectedContact.role.slice(1)}
+                    </Badge>
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      {selectedContact.status === "online" ? (
+                        <>Online</>
+                      ) : selectedContact.status === "away" ? (
+                        <>
+                          Away
+                          <Clock className="h-3 w-3" />
+                        </>
+                      ) : (
+                        <>Offline</>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -325,12 +419,14 @@ function ChatContent() {
 export default function Chat() {
   return (
     <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-16 pb-16">
-          <ChatContent />
-        </main>
-      </div>
+      <ChatPresenceProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-16 pb-16">
+            <ChatContent />
+          </main>
+        </div>
+      </ChatPresenceProvider>
     </TranslationProvider>
   )
 }

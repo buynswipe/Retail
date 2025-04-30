@@ -15,6 +15,9 @@ import Link from "next/link"
 import { getOrdersByRetailer } from "@/lib/order-service"
 import type { Order } from "@/lib/order-service"
 
+// Import the ProtectedRoute component at the top of the file
+import ProtectedRoute from "@/app/components/protected-route"
+
 function RetailerDashboardContent() {
   const { t } = useTranslation()
   const [pinCode, setPinCode] = useState("")
@@ -291,15 +294,18 @@ function RetailerDashboardContent() {
   )
 }
 
+// Wrap the entire component with ProtectedRoute
 export default function RetailerDashboard() {
   return (
     <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <RetailerDashboardContent />
-        </main>
-      </div>
+      <ProtectedRoute requiredRole="retailer">
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-20 pb-20 px-4">
+            <RetailerDashboardContent />
+          </main>
+        </div>
+      </ProtectedRoute>
     </TranslationProvider>
   )
 }

@@ -193,17 +193,25 @@ export async function getCurrentUser(): Promise<UserData | null> {
 }
 
 // Sign out
-export async function signOut(): Promise<{ success: boolean; error?: string }> {
+export async function signOut() {
   try {
-    // In a real app, this would use Supabase Auth
-    // For now, we'll just clear localStorage
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("currentUser")
+    // Call Supabase signOut
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      throw error
     }
+
+    // Clear any local storage or cookies related to authentication
+    localStorage.removeItem("auth_user")
+
+    // Clear any other auth-related data
+    document.cookie = "userRole=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
+
     return { success: true }
   } catch (error) {
     console.error("Error signing out:", error)
-    return { success: false, error: "Failed to sign out. Please try again." }
+    return { success: false, error }
   }
 }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,17 +14,127 @@ import { supabase } from "@/lib/supabase-client"
 import { Package, Calendar, ChevronRight, Loader2 } from "lucide-react"
 import type { Order } from "@/lib/types"
 
+// Store demo orders in localStorage to persist status changes
+const getDemoOrders = (userId: string) => {
+  try {
+    const storedOrders = localStorage.getItem(`demo_orders_${userId}`)
+    if (storedOrders) {
+      return JSON.parse(storedOrders)
+    }
+  } catch (error) {
+    console.error("Error reading from localStorage:", error)
+  }
+
+  // Default demo orders if none in localStorage
+  return [
+    {
+      id: "demo-order-1",
+      order_number: "ORD12345678",
+      retailer_id: "demo-retailer-1",
+      wholesaler_id: userId,
+      total_amount: 2500,
+      wholesaler_payout: 2400,
+      status: "placed",
+      payment_method: "online",
+      payment_status: "pending",
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+      retailer: {
+        id: "demo-retailer-1",
+        business_name: "Demo Retail Store",
+        name: "Demo Retailer",
+      },
+    },
+    {
+      id: "demo-order-2",
+      order_number: "ORD87654321",
+      retailer_id: "demo-retailer-2",
+      wholesaler_id: userId,
+      total_amount: 3500,
+      wholesaler_payout: 3350,
+      status: "confirmed",
+      payment_method: "cod",
+      payment_status: "pending",
+      created_at: new Date(Date.now() - 7200000).toISOString(),
+      retailer: {
+        id: "demo-retailer-2",
+        business_name: "Another Retail Shop",
+        name: "Another Retailer",
+      },
+    },
+  ]
+}
+
+// Save demo orders to localStorage
+const saveDemoOrders = (userId: string, orders: Order[]) => {
+  try {
+    localStorage.setItem(`demo_orders_${userId}`, JSON.stringify(orders))
+  } catch (error) {
+    console.error("Error saving to localStorage:", error)
+  }
+}
+
 function OrdersContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { t } = useTranslation()
   const { user } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("all")
 
+  // Track if we've already processed the URL params
+  const [processedParams, setProcessedParams] = useState(false)
+
+  // Load orders on initial mount and when user changes
   useEffect(() => {
     if (user) {
       loadOrders()
+    }
+  }, [user])
+
+  // Process URL params only once
+  useEffect(() => {
+    const updatedOrderId = searchParams.get("updatedOrderId")
+    const newStatus = searchParams.get("newStatus")
+
+    if (updatedOrderId && newStatus && user && !processedParams) {
+      // Update the order in our local state
+      setOrders((prevOrders) => {
+        const updatedOrders = prevOrders.map((order) => {
+          if (order.id === updatedOrderId) {
+            return { ...order, status: newStatus }
+          }
+          return order
+        })
+
+        // If this is a demo user, save the updated orders
+        if (user.id.startsWith("user-")) {
+          saveDemoOrders(user.id, updatedOrders)
+        }
+
+        return updatedOrders
+      })
+
+      // Mark as processed to prevent infinite loop
+      setProcessedParams(true)
+    }
+  }, [searchParams, user, processedParams])
+
+  // Add a new effect to reload orders when the component is focused
+  useEffect(() => {
+    // This will run when the component mounts and becomes visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        loadOrders()
+      }
+    }
+
+    // Add event listener for visibility change
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    // Clean up
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
   }, [user])
 
@@ -35,43 +145,8 @@ function OrdersContent() {
     try {
       // Check if this is a demo user ID
       if (user.id.startsWith("user-")) {
-        // Use demo data for demo users
-        const demoOrders = [
-          {
-            id: "demo-order-1",
-            order_number: "ORD12345678",
-            retailer_id: "demo-retailer-1",
-            wholesaler_id: user.id,
-            total_amount: 2500,
-            wholesaler_payout: 2400,
-            status: "placed",
-            payment_method: "online",
-            payment_status: "pending",
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-            retailer: {
-              id: "demo-retailer-1",
-              business_name: "Demo Retail Store",
-              name: "Demo Retailer",
-            },
-          },
-          {
-            id: "demo-order-2",
-            order_number: "ORD87654321",
-            retailer_id: "demo-retailer-2",
-            wholesaler_id: user.id,
-            total_amount: 3500,
-            wholesaler_payout: 3350,
-            status: "confirmed",
-            payment_method: "cod",
-            payment_status: "pending",
-            created_at: new Date(Date.now() - 7200000).toISOString(),
-            retailer: {
-              id: "demo-retailer-2",
-              business_name: "Another Retail Shop",
-              name: "Another Retailer",
-            },
-          },
-        ]
+        // Use demo data for demo users from localStorage
+        const demoOrders = getDemoOrders(user.id)
         setOrders(demoOrders)
         setIsLoading(false)
         return
@@ -94,42 +169,7 @@ function OrdersContent() {
           variant: "destructive",
         })
         // Fall back to demo data
-        const demoOrders = [
-          {
-            id: "demo-order-1",
-            order_number: "ORD12345678",
-            retailer_id: "demo-retailer-1",
-            wholesaler_id: user.id,
-            total_amount: 2500,
-            wholesaler_payout: 2400,
-            status: "placed",
-            payment_method: "online",
-            payment_status: "pending",
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-            retailer: {
-              id: "demo-retailer-1",
-              business_name: "Demo Retail Store",
-              name: "Demo Retailer",
-            },
-          },
-          {
-            id: "demo-order-2",
-            order_number: "ORD87654321",
-            retailer_id: "demo-retailer-2",
-            wholesaler_id: user.id,
-            total_amount: 3500,
-            wholesaler_payout: 3350,
-            status: "confirmed",
-            payment_method: "cod",
-            payment_status: "pending",
-            created_at: new Date(Date.now() - 7200000).toISOString(),
-            retailer: {
-              id: "demo-retailer-2",
-              business_name: "Another Retail Shop",
-              name: "Another Retailer",
-            },
-          },
-        ]
+        const demoOrders = getDemoOrders(user.id)
         setOrders(demoOrders)
       } else {
         setOrders(data || [])
@@ -148,6 +188,11 @@ function OrdersContent() {
 
   const handleViewOrder = (orderId: string) => {
     router.push(`/wholesaler/orders/${orderId}`)
+  }
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    // Removed loadOrders() call to prevent unnecessary data fetching
   }
 
   const getStatusColor = (status: string) => {
@@ -197,7 +242,7 @@ function OrdersContent() {
     <div className="container mx-auto max-w-6xl">
       <h1 className="text-3xl font-bold mb-6">Manage Orders</h1>
 
-      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
+      <Tabs defaultValue="all" value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="mb-6">
           <TabsTrigger value="all">All Orders</TabsTrigger>
           <TabsTrigger value="placed">New Orders</TabsTrigger>

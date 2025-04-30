@@ -26,6 +26,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { PlatformSettings, User } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
 
+// Import the ProtectedRoute component at the top of the file
+import ProtectedRoute from "@/app/components/protected-route"
+
+// Wrap the entire component with ProtectedRoute
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("users")
   const [users, setUsers] = useState<User[]>([])
@@ -148,276 +152,278 @@ export default function AdminDashboard() {
   }
 
   return (
-    <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <div className="container mx-auto max-w-7xl">
-            <div className="flex justify-between items-center mb-8">
-              <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-              <Button variant="outline" onClick={handleLogout}>
-                Logout
-              </Button>
-            </div>
+    <ProtectedRoute requiredRole="admin">
+      <TranslationProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow pt-20 pb-20 px-4">
+            <div className="container mx-auto max-w-7xl">
+              <div className="flex justify-between items-center mb-8">
+                <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+                <Button variant="outline" onClick={handleLogout}>
+                  Logout
+                </Button>
+              </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-5 mb-8">
-                <TabsTrigger value="users" className="text-lg py-3">
-                  <Users className="mr-2 h-5 w-5" />
-                  Users
-                </TabsTrigger>
-                <TabsTrigger value="transactions" className="text-lg py-3">
-                  <DollarSign className="mr-2 h-5 w-5" />
-                  Transactions
-                </TabsTrigger>
-                <TabsTrigger value="disputes" className="text-lg py-3">
-                  <AlertCircle className="mr-2 h-5 w-5" />
-                  Disputes
-                </TabsTrigger>
-                <TabsTrigger value="tax" className="text-lg py-3">
-                  <FileText className="mr-2 h-5 w-5" />
-                  Tax
-                </TabsTrigger>
-                <TabsTrigger value="settings" className="text-lg py-3">
-                  <Settings className="mr-2 h-5 w-5" />
-                  Settings
-                </TabsTrigger>
-              </TabsList>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid grid-cols-5 mb-8">
+                  <TabsTrigger value="users" className="text-lg py-3">
+                    <Users className="mr-2 h-5 w-5" />
+                    Users
+                  </TabsTrigger>
+                  <TabsTrigger value="transactions" className="text-lg py-3">
+                    <DollarSign className="mr-2 h-5 w-5" />
+                    Transactions
+                  </TabsTrigger>
+                  <TabsTrigger value="disputes" className="text-lg py-3">
+                    <AlertCircle className="mr-2 h-5 w-5" />
+                    Disputes
+                  </TabsTrigger>
+                  <TabsTrigger value="tax" className="text-lg py-3">
+                    <FileText className="mr-2 h-5 w-5" />
+                    Tax
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="text-lg py-3">
+                    <Settings className="mr-2 h-5 w-5" />
+                    Settings
+                  </TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="users" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl">User Management</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Role</TableHead>
-                          <TableHead>Phone</TableHead>
-                          <TableHead>Business Name</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {users.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell className="font-medium">{user.name}</TableCell>
-                            <TableCell className="capitalize">{user.role}</TableCell>
-                            <TableCell>{user.phone_number}</TableCell>
-                            <TableCell>{user.business_name || "-"}</TableCell>
-                            <TableCell>
-                              {user.is_approved ? (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                  Approved
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                  Pending
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex space-x-2">
-                                {!user.is_approved ? (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleApprove(user.id)}
-                                    className="bg-green-500 hover:bg-green-600"
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="destructive" onClick={() => handleBlock(user.id)}>
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Block
-                                  </Button>
-                                )}
-                                <Button size="sm" variant="outline">
-                                  View Details
-                                </Button>
-                              </div>
-                            </TableCell>
+                <TabsContent value="users" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-2xl">User Management</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Phone</TableHead>
+                            <TableHead>Business Name</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="transactions" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Transactions</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xl">Track and manage all platform transactions.</p>
-                    <div className="p-8 text-center text-gray-500">
-                      <p>Transaction data will appear here.</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="disputes" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Disputes</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xl">Manage and resolve user disputes.</p>
-                    <div className="p-8 text-center text-gray-500">
-                      <p>Dispute data will appear here.</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="tax" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Platform Tax Report</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex justify-end mb-4">
-                      <Button className="bg-blue-500 hover:bg-blue-600">
-                        <Download className="mr-2 h-4 w-4" />
-                        Export Report
-                      </Button>
-                    </div>
-                    <div className="p-8 text-center text-gray-500">
-                      <p>Tax report data will appear here.</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="settings" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Platform Settings</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="commission_percentage" className="text-lg">
-                          Commission Percentage (0-10%)
-                        </Label>
-                        <Input
-                          id="commission_percentage"
-                          name="commission_percentage"
-                          type="number"
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          value={settings.commission_percentage}
-                          onChange={handleInputChange}
-                          className="text-lg h-12"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="commission_gst_rate" className="text-lg">
-                          Commission GST Rate (%)
-                        </Label>
-                        <Input
-                          id="commission_gst_rate"
-                          name="commission_gst_rate"
-                          type="number"
-                          min="0"
-                          max="28"
-                          value={settings.commission_gst_rate}
-                          onChange={handleInputChange}
-                          className="text-lg h-12"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="delivery_charge" className="text-lg">
-                          Delivery Charge (₹)
-                        </Label>
-                        <Input
-                          id="delivery_charge"
-                          name="delivery_charge"
-                          type="number"
-                          min="0"
-                          max="500"
-                          value={settings.delivery_charge}
-                          onChange={handleInputChange}
-                          className="text-lg h-12"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="delivery_gst_rate" className="text-lg">
-                          Delivery GST Rate (%)
-                        </Label>
-                        <Input
-                          id="delivery_gst_rate"
-                          name="delivery_gst_rate"
-                          type="number"
-                          min="0"
-                          max="28"
-                          value={settings.delivery_gst_rate}
-                          onChange={handleInputChange}
-                          className="text-lg h-12"
-                        />
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={handleSaveSettings}
-                      className="w-full h-12 text-lg bg-blue-500 hover:bg-blue-600"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Saving..." : "Save Settings"}
-                    </Button>
-
-                    <div className="mt-8">
-                      <div
-                        className="flex justify-between items-center cursor-pointer"
-                        onClick={() => setShowHistory(!showHistory)}
-                      >
-                        <h3 className="text-xl font-medium">Rate History</h3>
-                        {showHistory ? <ChevronUp /> : <ChevronDown />}
-                      </div>
-
-                      {showHistory && (
-                        <Table className="mt-4">
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Date</TableHead>
-                              <TableHead>Commission %</TableHead>
-                              <TableHead>Commission GST</TableHead>
-                              <TableHead>Delivery Charge</TableHead>
-                              <TableHead>Delivery GST</TableHead>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell className="font-medium">{user.name}</TableCell>
+                              <TableCell className="capitalize">{user.role}</TableCell>
+                              <TableCell>{user.phone_number}</TableCell>
+                              <TableCell>{user.business_name || "-"}</TableCell>
+                              <TableCell>
+                                {user.is_approved ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Approved
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Pending
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  {!user.is_approved ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleApprove(user.id)}
+                                      className="bg-green-500 hover:bg-green-600"
+                                    >
+                                      <CheckCircle className="h-4 w-4 mr-1" />
+                                      Approve
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" variant="destructive" onClick={() => handleBlock(user.id)}>
+                                      <XCircle className="h-4 w-4 mr-1" />
+                                      Block
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="outline">
+                                    View Details
+                                  </Button>
+                                </div>
+                              </TableCell>
                             </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {settingsHistory.map((setting) => (
-                              <TableRow key={setting.id}>
-                                <TableCell>{new Date(setting.effective_from).toLocaleDateString()}</TableCell>
-                                <TableCell>{setting.commission_percentage}%</TableCell>
-                                <TableCell>{setting.commission_gst_rate}%</TableCell>
-                                <TableCell>₹{setting.delivery_charge}</TableCell>
-                                <TableCell>{setting.delivery_gst_rate}%</TableCell>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="transactions" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-2xl">Transactions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xl">Track and manage all platform transactions.</p>
+                      <div className="p-8 text-center text-gray-500">
+                        <p>Transaction data will appear here.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="disputes" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-2xl">Disputes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xl">Manage and resolve user disputes.</p>
+                      <div className="p-8 text-center text-gray-500">
+                        <p>Dispute data will appear here.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="tax" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-2xl">Platform Tax Report</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-end mb-4">
+                        <Button className="bg-blue-500 hover:bg-blue-600">
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Report
+                        </Button>
+                      </div>
+                      <div className="p-8 text-center text-gray-500">
+                        <p>Tax report data will appear here.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="settings" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-2xl">Platform Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="commission_percentage" className="text-lg">
+                            Commission Percentage (0-10%)
+                          </Label>
+                          <Input
+                            id="commission_percentage"
+                            name="commission_percentage"
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            value={settings.commission_percentage}
+                            onChange={handleInputChange}
+                            className="text-lg h-12"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="commission_gst_rate" className="text-lg">
+                            Commission GST Rate (%)
+                          </Label>
+                          <Input
+                            id="commission_gst_rate"
+                            name="commission_gst_rate"
+                            type="number"
+                            min="0"
+                            max="28"
+                            value={settings.commission_gst_rate}
+                            onChange={handleInputChange}
+                            className="text-lg h-12"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="delivery_charge" className="text-lg">
+                            Delivery Charge (₹)
+                          </Label>
+                          <Input
+                            id="delivery_charge"
+                            name="delivery_charge"
+                            type="number"
+                            min="0"
+                            max="500"
+                            value={settings.delivery_charge}
+                            onChange={handleInputChange}
+                            className="text-lg h-12"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="delivery_gst_rate" className="text-lg">
+                            Delivery GST Rate (%)
+                          </Label>
+                          <Input
+                            id="delivery_gst_rate"
+                            name="delivery_gst_rate"
+                            type="number"
+                            min="0"
+                            max="28"
+                            value={settings.delivery_gst_rate}
+                            onChange={handleInputChange}
+                            className="text-lg h-12"
+                          />
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={handleSaveSettings}
+                        className="w-full h-12 text-lg bg-blue-500 hover:bg-blue-600"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? "Saving..." : "Save Settings"}
+                      </Button>
+
+                      <div className="mt-8">
+                        <div
+                          className="flex justify-between items-center cursor-pointer"
+                          onClick={() => setShowHistory(!showHistory)}
+                        >
+                          <h3 className="text-xl font-medium">Rate History</h3>
+                          {showHistory ? <ChevronUp /> : <ChevronDown />}
+                        </div>
+
+                        {showHistory && (
+                          <Table className="mt-4">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Commission %</TableHead>
+                                <TableHead>Commission GST</TableHead>
+                                <TableHead>Delivery Charge</TableHead>
+                                <TableHead>Delivery GST</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </main>
-      </div>
-    </TranslationProvider>
+                            </TableHeader>
+                            <TableBody>
+                              {settingsHistory.map((setting) => (
+                                <TableRow key={setting.id}>
+                                  <TableCell>{new Date(setting.effective_from).toLocaleDateString()}</TableCell>
+                                  <TableCell>{setting.commission_percentage}%</TableCell>
+                                  <TableCell>{setting.commission_gst_rate}%</TableCell>
+                                  <TableCell>₹{setting.delivery_charge}</TableCell>
+                                  <TableCell>{setting.delivery_gst_rate}%</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </main>
+        </div>
+      </TranslationProvider>
+    </ProtectedRoute>
   )
 }

@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS notifications (
   message_hindi TEXT,
   priority VARCHAR(10) NOT NULL CHECK (priority IN ('low', 'medium', 'high')),
   is_read BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  related_id TEXT,
+  related_type TEXT
 );
 
 -- Notification Preferences Table

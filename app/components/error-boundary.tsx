@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { Home, RefreshCw, ArrowLeft } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
-import { getDashboardPath } from "@/lib/navigation-utils"
+// Remove the useAuth import
+// import { useAuth } from "@/lib/auth-context"
+// import { getDashboardPath } from "@/lib/navigation-utils"
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string }
@@ -28,7 +29,8 @@ export function ErrorBoundary({ error, reset, children }: ErrorBoundaryProps) {
   })
 
   const router = useRouter()
-  const { user } = useAuth()
+  // Remove the useAuth hook usage
+  // const { user } = useAuth()
 
   useEffect(() => {
     // Customize error message based on error type
@@ -63,8 +65,8 @@ export function ErrorBoundary({ error, reset, children }: ErrorBoundaryProps) {
   }
 
   const handleGoHome = () => {
-    const dashboardPath = getDashboardPath(user?.role, "/")
-    router.push(dashboardPath)
+    // Always go to the home page instead of trying to determine the dashboard path
+    router.push("/")
   }
 
   return (
@@ -92,7 +94,7 @@ export function ErrorBoundary({ error, reset, children }: ErrorBoundaryProps) {
           </Button>
           <Button onClick={handleGoHome}>
             <Home className="mr-2 h-4 w-4" />
-            Dashboard
+            Home
           </Button>
         </CardFooter>
       </Card>

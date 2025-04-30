@@ -57,7 +57,7 @@ function RetailerDashboardContent() {
     // Mock data
     const mockWholesalers = [
       {
-        id: "1",
+        id: "wholesaler-1", // Use a consistent ID format that matches what's in product-service.ts
         name: "Vikram Singh",
         business_name: "Vikram Wholesale",
         distance: 2.3,
@@ -65,7 +65,7 @@ function RetailerDashboardContent() {
         rating: 4.8,
       },
       {
-        id: "2",
+        id: "wholesaler-2",
         name: "Sunil Kapoor",
         business_name: "Kapoor Distributors",
         distance: 3.7,
@@ -73,7 +73,7 @@ function RetailerDashboardContent() {
         rating: 4.5,
       },
       {
-        id: "3",
+        id: "wholesaler-3",
         name: "Amit Patel",
         business_name: "Patel Supplies",
         distance: 5.1,
@@ -86,13 +86,42 @@ function RetailerDashboardContent() {
   }, [])
 
   const handleSearch = () => {
-    // In a real app, this would filter wholesalers by pin code
-    console.log("Searching for wholesalers in pin code:", pinCode)
+    if (!pinCode.trim()) return
+
+    // Filter wholesalers by pin code
+    const filtered = wholesalers.filter((w) => w.pin_code === pinCode)
+    setWholesalers(filtered.length > 0 ? filtered : wholesalers)
   }
 
   const handleUseGPS = () => {
     // In a real app, this would use the browser's geolocation API
-    console.log("Using GPS to find nearby wholesalers")
+    // For now, just reset to show all wholesalers
+    setWholesalers([
+      {
+        id: "wholesaler-1",
+        name: "Vikram Singh",
+        business_name: "Vikram Wholesale",
+        distance: 2.3,
+        pin_code: "400001",
+        rating: 4.8,
+      },
+      {
+        id: "wholesaler-2",
+        name: "Sunil Kapoor",
+        business_name: "Kapoor Distributors",
+        distance: 3.7,
+        pin_code: "400001",
+        rating: 4.5,
+      },
+      {
+        id: "wholesaler-3",
+        name: "Amit Patel",
+        business_name: "Patel Supplies",
+        distance: 5.1,
+        pin_code: "400002",
+        rating: 4.2,
+      },
+    ])
   }
 
   const handleLogout = async () => {
@@ -230,7 +259,7 @@ function RetailerDashboardContent() {
                   </div>
                   <div>
                     <Button asChild variant="outline" size="sm" className="text-sm whitespace-nowrap">
-                      <Link href={`/retailer/orders?id=${order.id}`}>
+                      <Link href={`/retailer/orders/${order.id}`}>
                         <FileText className="mr-1 h-4 w-4" />
                         Details
                       </Link>
@@ -281,7 +310,11 @@ function RetailerDashboardContent() {
                   </div>
                 </div>
                 <div className="p-6 bg-gray-50 flex items-center justify-center">
-                  <Button asChild className="h-14 px-6 bg-blue-500 hover:bg-blue-600">
+                  <Button
+                    asChild
+                    className="h-14 px-6 bg-blue-500 hover:bg-blue-600"
+                    onClick={() => console.log(`Viewing catalog for ${wholesaler.id}`)}
+                  >
                     <Link href={`/retailer/browse?wholesaler=${wholesaler.id}`}>View Catalog</Link>
                   </Button>
                 </div>

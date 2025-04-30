@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
-import { Search, ShoppingCart, Plus, Minus, SlidersHorizontal } from "lucide-react"
+import { Search, ShoppingCart, Plus, Minus, SlidersHorizontal, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useCart } from "@/lib/cart-context"
 import { useOffline } from "@/lib/offline-context"
-import { getAllProducts } from "@/lib/product-service"
+import { getAllProducts, getProductsByWholesaler } from "@/lib/product-service"
 import { filterProducts, getUniqueCategories, getPriceRange } from "@/lib/product-search"
 import type { Product } from "@/lib/types"
 import type { SearchFilters } from "@/lib/product-search"
@@ -34,7 +34,7 @@ function ProductCard({ product, onAddToCart }: { product: Product; onAddToCart: 
   const { cartItems } = useCart()
 
   // Check if product is already in cart
-  const cartItem = cartItems.find((item) => item.product_id === product.id)
+  const cartItem = cartItems?.find((item) => item.product_id === product.id)
   const isInCart = !!cartItem
 
   const handleIncrement = () => {
@@ -261,11 +261,13 @@ function RetailerBrowseContent() {
   const { isOffline } = useOffline()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [currentWholesaler, setCurrentWholesaler] = useState<string | null>(null)
 
   // Get wholesaler ID from URL if present
   useEffect(() => {
-    const wholesalerId = searchParams.get("wholesaler")
+    const wholesalerId = searchParams?.get("wholesaler")
     if (wholesalerId) {
+      setCurrentWholesaler(wholesalerId)
       setFilters((prev) => ({ ...prev, wholesalerId }))
     }
   }, [searchParams])
@@ -278,57 +280,105 @@ function RetailerBrowseContent() {
         if (isOffline) {
           // Use demo data in offline mode
           const demoProducts = generateDemoProducts()
-          setProducts(demoProducts)
+
+          // Filter by wholesaler if specified
+          const productsToUse = currentWholesaler
+            ? demoProducts.filter((p) => p.wholesaler_id === currentWholesaler)
+            : demoProducts
+
+          setProducts(productsToUse)
 
           // Extract categories and price range
-          setCategories(getUniqueCategories(demoProducts))
-          setPriceRange(getPriceRange(demoProducts))
+          setCategories(getUniqueCategories(productsToUse))
+          setPriceRange(getPriceRange(productsToUse))
 
           // Apply initial filters
-          setFilteredProducts(filterProducts(demoProducts, filters))
+          setFilteredProducts(filterProducts(productsToUse, filters))
         } else {
-          // Fetch from API in online mode
-          const { data, error } = await getAllProducts()
+          // Fetch from API in online mode - either all products or by wholesaler
+          let data: Product[] | null = null
+          let error: any = null
+
+          if (currentWholesaler) {
+            console.log(`Loading products for wholesaler: ${currentWholesaler}`)
+            const result = await getProductsByWholesaler(currentWholesaler)
+            data = result.data
+            error = result.error
+          } else {
+            const result = await getAllProducts()
+            data = result.data
+            error = result.error
+          }
+
           if (error) {
             console.error("Error loading products:", error)
-          } else if (data) {
-            setProducts(data)
+            // Fall back to demo data on error
+            const demoProducts = generateDemoProducts()
+            const productsToUse = currentWholesaler
+              ? demoProducts.filter((p) => p.wholesaler_id === currentWholesaler || p.wholesaler_id === "wholesaler-1")
+              : demoProducts
 
-            // Extract categories and price range
+            setProducts(productsToUse)
+            setCategories(getUniqueCategories(productsToUse))
+            setPriceRange(getPriceRange(productsToUse))
+            setFilteredProducts(filterProducts(productsToUse, filters))
+          } else if (data && data.length > 0) {
+            setProducts(data)
             setCategories(getUniqueCategories(data))
             setPriceRange(getPriceRange(data))
-
-            // Apply initial filters
             setFilteredProducts(filterProducts(data, filters))
+          } else {
+            // No data returned, use demo data
+            const demoProducts = generateDemoProducts()
+            const productsToUse = currentWholesaler
+              ? demoProducts.filter((p) => p.wholesaler_id === currentWholesaler || p.wholesaler_id === "wholesaler-1")
+              : demoProducts
+
+            setProducts(productsToUse)
+            setCategories(getUniqueCategories(productsToUse))
+            setPriceRange(getPriceRange(productsToUse))
+            setFilteredProducts(filterProducts(productsToUse, filters))
           }
         }
       } catch (error) {
         console.error("Error loading products:", error)
+        // Fall back to demo data on error
+        const demoProducts = generateDemoProducts()
+        const productsToUse = currentWholesaler
+          ? demoProducts.filter((p) => p.wholesaler_id === currentWholesaler || p.wholesaler_id === "wholesaler-1")
+          : demoProducts
+
+        setProducts(productsToUse)
+        setCategories(getUniqueCategories(productsToUse))
+        setPriceRange(getPriceRange(productsToUse))
+        setFilteredProducts(filterProducts(productsToUse, filters))
       } finally {
         setIsLoading(false)
       }
     }
 
     loadProducts()
-  }, [isOffline])
+  }, [isOffline, currentWholesaler])
 
   // Apply filters when they change
   useEffect(() => {
-    if (products.length > 0) {
+    if (products && products.length > 0) {
       const filtered = filterProducts(products, { ...filters, query: searchQuery })
       setFilteredProducts(filtered)
     }
-  }, [filters, products])
+  }, [filters, products, searchQuery])
 
   // Handle search
   const handleSearch = () => {
-    const filtered = filterProducts(products, { ...filters, query: searchQuery })
-    setFilteredProducts(filtered)
+    if (products && products.length > 0) {
+      const filtered = filterProducts(products, { ...filters, query: searchQuery })
+      setFilteredProducts(filtered)
+    }
   }
 
   // Handle add to cart
   const handleAddToCart = (product: Product) => {
-    const existingItem = cartItems.find((item) => item.product_id === product.id)
+    const existingItem = cartItems?.find((item) => item.product_id === product.id)
 
     if (existingItem) {
       updateCartItem({
@@ -347,15 +397,56 @@ function RetailerBrowseContent() {
 
   // Reset filters
   const handleResetFilters = () => {
-    setFilters({})
+    // Keep the wholesaler filter if it exists
+    const wholesalerId = filters.wholesalerId
+    setFilters(wholesalerId ? { wholesalerId } : {})
     setSearchQuery("")
-    setFilteredProducts(products)
+
+    // Re-filter products with just the wholesaler filter if it exists
+    if (products && products.length > 0) {
+      const filtered = wholesalerId ? filterProducts(products, { wholesalerId }) : products
+      setFilteredProducts(filtered)
+    }
+  }
+
+  // Get wholesaler name if filtering by wholesaler
+  const getWholesalerName = () => {
+    if (!currentWholesaler) return null
+
+    // This is a simplified approach - in a real app, you'd fetch this from your database
+    const wholesalerMap: Record<string, string> = {
+      "wholesaler-1": "Vikram Wholesale",
+      "wholesaler-2": "Kapoor Distributors",
+      "wholesaler-3": "Patel Supplies",
+      "1": "Vikram Wholesale",
+      "2": "Kapoor Distributors",
+      "3": "Patel Supplies",
+    }
+
+    return wholesalerMap[currentWholesaler] || "Wholesaler"
   }
 
   return (
     <div className="container mx-auto max-w-7xl">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Browse Products</h1>
+        <div>
+          <h1 className="text-3xl font-bold">
+            {currentWholesaler ? `${getWholesalerName()} Products` : "Browse Products"}
+          </h1>
+          {currentWholesaler && (
+            <div className="flex items-center mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/retailer/browse")}
+                className="flex items-center gap-1"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to All Products
+              </Button>
+            </div>
+          )}
+        </div>
         <Button asChild variant="outline" className="hidden md:flex">
           <Link href="/retailer/checkout">
             <ShoppingCart className="mr-2 h-5 w-5" />

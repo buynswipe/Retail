@@ -47,15 +47,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, [isDemoDataInitialized])
 
   return (
-    <>
+    <AuthProvider>
       <ClientInit />
-      <AuthProvider>
-        <NotificationProvider>
-          <OfflineProvider>
-            <CartProvider>{children}</CartProvider>
-          </OfflineProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </>
+
+      <NotificationProvider>
+        <OfflineProvider>
+          <CartProvider>{children}</CartProvider>
+        </OfflineProvider>
+      </NotificationProvider>
+    </AuthProvider>
   )
 }

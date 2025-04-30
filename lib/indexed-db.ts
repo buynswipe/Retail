@@ -15,12 +15,23 @@ interface PendingOperation {
 
 class IndexedDBService {
   private dbPromise: Promise<IDBDatabase> | null = null
+  private isClient = false
 
   constructor() {
-    this.initDB()
+    // Check if we're in a browser environment
+    this.isClient = typeof window !== "undefined"
+
+    // Only initialize DB in client environment
+    if (this.isClient) {
+      this.initDB()
+    }
   }
 
   private initDB(): Promise<IDBDatabase> {
+    if (!this.isClient) {
+      return Promise.reject(new Error("IndexedDB is not available in server environment"))
+    }
+
     if (!this.dbPromise) {
       this.dbPromise = new Promise((resolve, reject) => {
         if (!window.indexedDB) {
@@ -62,6 +73,8 @@ class IndexedDBService {
   }
 
   async storeOfflineData(key: string, data: any): Promise<void> {
+    if (!this.isClient) return Promise.resolve()
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -89,6 +102,8 @@ class IndexedDBService {
   }
 
   async getOfflineData(key: string): Promise<any> {
+    if (!this.isClient) return Promise.resolve(null)
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -117,6 +132,8 @@ class IndexedDBService {
   }
 
   async removeOfflineData(key: string): Promise<void> {
+    if (!this.isClient) return Promise.resolve()
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -138,6 +155,8 @@ class IndexedDBService {
   }
 
   async storePendingOperation(operation: PendingOperation): Promise<number> {
+    if (!this.isClient) return Promise.resolve(-1)
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -164,6 +183,8 @@ class IndexedDBService {
   }
 
   async getPendingOperations(): Promise<PendingOperation[]> {
+    if (!this.isClient) return Promise.resolve([])
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -187,6 +208,8 @@ class IndexedDBService {
   }
 
   async removePendingOperation(id: number): Promise<void> {
+    if (!this.isClient) return Promise.resolve()
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -208,6 +231,8 @@ class IndexedDBService {
   }
 
   async updatePendingOperation(id: number, updates: Partial<PendingOperation>): Promise<void> {
+    if (!this.isClient) return Promise.resolve()
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -246,6 +271,8 @@ class IndexedDBService {
   }
 
   async clearAllPendingOperations(): Promise<void> {
+    if (!this.isClient) return Promise.resolve()
+
     try {
       const db = await this.initDB()
       return new Promise((resolve, reject) => {
@@ -268,6 +295,8 @@ class IndexedDBService {
 
   // Check if IndexedDB is supported and working
   async isSupported(): Promise<boolean> {
+    if (!this.isClient) return false
+
     if (!window.indexedDB) {
       return false
     }
@@ -283,6 +312,10 @@ class IndexedDBService {
 
   // Get database size estimation
   async getDatabaseSize(): Promise<{ stores: Record<string, number>; totalEntries: number }> {
+    if (!this.isClient) {
+      return { stores: {}, totalEntries: 0 }
+    }
+
     try {
       const db = await this.initDB()
       const stores = [OFFLINE_STORE, PENDING_OPS_STORE]
@@ -319,5 +352,22 @@ class IndexedDBService {
   }
 }
 
-const indexedDBService = new IndexedDBService()
+// Create a singleton instance
+const indexedDBService =
+  typeof window !== "undefined"
+    ? new IndexedDBService()
+    : {
+        // Provide no-op implementations for server-side rendering
+        storeOfflineData: () => Promise.resolve(),
+        getOfflineData: () => Promise.resolve(null),
+        removeOfflineData: () => Promise.resolve(),
+        storePendingOperation: () => Promise.resolve(-1),
+        getPendingOperations: () => Promise.resolve([]),
+        removePendingOperation: () => Promise.resolve(),
+        updatePendingOperation: () => Promise.resolve(),
+        clearAllPendingOperations: () => Promise.resolve(),
+        isSupported: () => Promise.resolve(false),
+        getDatabaseSize: () => Promise.resolve({ stores: {}, totalEntries: 0 }),
+      }
+
 export default indexedDBService

@@ -49,6 +49,46 @@ const translations = {
     "footer.privacy": "Privacy Policy",
     "footer.terms": "Terms of Service",
     "footer.contact": "Contact Us",
+
+    // Voice Input
+    "start.voice.input": "Start Voice Input",
+    "stop.voice.input": "Stop Voice Input",
+    "voice.input.not.supported": "Voice input not supported in this browser",
+    "voice.input.error": "Error with voice input",
+    "voice.input.listening": "Listening...",
+    "voice.input.processing": "Processing...",
+
+    // PIN Code Lookup
+    "pinCode.detectLocation": "Detect location",
+    "pinCode.success": "Location Detected",
+    "pinCode.locationDetected": "Your location has been detected successfully.",
+    "pinCode.partialSuccess": "Approximate Location",
+    "pinCode.approximateLocation": "Using approximate location data.",
+    "pinCode.error": "Location Error",
+    "pinCode.locationError": "Could not detect your location. Please enter manually.",
+    "pinCode.browserNotSupported": "Your browser does not support geolocation.",
+
+    // Retailer Onboarding
+    "onboarding.retailerOnboarding": "Retailer Onboarding",
+    "onboarding.step1": "Step 1: Basic Information",
+    "onboarding.step2": "Step 2: Location",
+    "onboarding.step3": "Step 3: GST Information (Optional)",
+    "onboarding.yourName": "Your Name",
+    "onboarding.yourNamePlaceholder": "John Doe",
+    "onboarding.shopName": "Shop Name",
+    "onboarding.shopNamePlaceholder": "My Grocery Store",
+    "onboarding.pinCode": "PIN Code",
+    "onboarding.pinCodePlaceholder": "400001",
+    "onboarding.useCurrentLocation": "Use Current Location",
+    "onboarding.gstNumber": "GST Number (Optional)",
+    "onboarding.gstNumberPlaceholder": "22AAAAA0000A1Z5",
+    "onboarding.scanGstCertificate": "Scan GST Certificate",
+    "onboarding.platformRates": "Platform Rates",
+    "onboarding.commission": "Commission: ",
+    "onboarding.deliveryCharge": "Delivery Charge: ",
+    "onboarding.back": "Back",
+    "onboarding.next": "Next",
+    "onboarding.submit": "Submit",
   },
   hi: {
     // Landing page
@@ -88,6 +128,46 @@ const translations = {
     "footer.privacy": "गोपनीयता नीति",
     "footer.terms": "सेवा की शर्तें",
     "footer.contact": "संपर्क करें",
+
+    // Voice Input
+    "start.voice.input": "आवाज इनपुट शुरू करें",
+    "stop.voice.input": "आवाज इनपुट बंद करें",
+    "voice.input.not.supported": "इस ब्राउज़र में आवाज इनपुट समर्थित नहीं है",
+    "voice.input.error": "आवाज इनपुट में त्रुटि",
+    "voice.input.listening": "सुन रहा है...",
+    "voice.input.processing": "प्रोसेसिंग...",
+
+    // PIN Code Lookup
+    "pinCode.detectLocation": "स्थान का पता लगाएं",
+    "pinCode.success": "स्थान का पता चला",
+    "pinCode.locationDetected": "आपके स्थान का पता सफलतापूर्वक लगा लिया गया है।",
+    "pinCode.partialSuccess": "अनुमानित स्थान",
+    "pinCode.approximateLocation": "अनुमानित स्थान डेटा का उपयोग कर रहे हैं।",
+    "pinCode.error": "स्थान त्रुटि",
+    "pinCode.locationError": "आपके स्थान का पता नहीं लगा सका। कृपया मैन्युअल रूप से दर्ज करें।",
+    "pinCode.browserNotSupported": "आपका ब्राउज़र जियोलोकेशन का समर्थन नहीं करता है।",
+
+    // Retailer Onboarding
+    "onboarding.retailerOnboarding": "रिटेलर ऑनबोर्डिंग",
+    "onboarding.step1": "चरण 1: बुनियादी जानकारी",
+    "onboarding.step2": "चरण 2: स्थान",
+    "onboarding.step3": "चरण 3: GST जानकारी (वैकल्पिक)",
+    "onboarding.yourName": "आपका नाम",
+    "onboarding.yourNamePlaceholder": "जॉन डो",
+    "onboarding.shopName": "दुकान का नाम",
+    "onboarding.shopNamePlaceholder": "मेरी किराना दुकान",
+    "onboarding.pinCode": "पिन कोड",
+    "onboarding.pinCodePlaceholder": "400001",
+    "onboarding.useCurrentLocation": "वर्तमान स्थान का उपयोग करें",
+    "onboarding.gstNumber": "GST नंबर (वैकल्पिक)",
+    "onboarding.gstNumberPlaceholder": "22AAAAA0000A1Z5",
+    "onboarding.scanGstCertificate": "GST प्रमाणपत्र स्कैन करें",
+    "onboarding.platformRates": "प्लेटफॉर्म दरें",
+    "onboarding.commission": "कमीशन: ",
+    "onboarding.deliveryCharge": "डिलीवरी शुल्क: ",
+    "onboarding.back": "पीछे",
+    "onboarding.next": "अगला",
+    "onboarding.submit": "जमा करें",
   },
 }
 

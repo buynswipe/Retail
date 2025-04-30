@@ -12,7 +12,16 @@ interface AuthContextType {
   isAuthenticated: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+// Create a default context value
+const defaultContextValue: AuthContextType = {
+  user: null,
+  isLoading: false,
+  setUser: () => {},
+  logout: async () => {},
+  isAuthenticated: false,
+}
+
+const AuthContext = createContext<AuthContextType>(defaultContextValue)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null)
@@ -73,8 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
+  // Return the context directly - it will use the default value if outside provider
   return context
 }

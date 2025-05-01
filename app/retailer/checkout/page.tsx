@@ -22,15 +22,19 @@ function CheckoutContent() {
   const router = useRouter()
   const { t } = useTranslation()
   const { user } = useAuth()
-  const { items, wholesalerId, wholesalerName, totalAmount, clearCart } = useCart()
+  const { items = [], wholesalerId = "", wholesalerName = "", totalAmount = 0, clearCart } = useCart() || {}
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi")
   const [isProcessing, setIsProcessing] = useState(false)
   const [deliveryCharge] = useState(50) // Fixed delivery charge
   const [deliveryGST] = useState(9) // 18% GST on delivery charge
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
+    // Mark that we're on the client
+    setIsClient(true)
+
     // Redirect to browse if cart is empty
-    if (items.length === 0 || !wholesalerId) {
+    if (items?.length === 0 || !wholesalerId) {
       router.push("/retailer/browse")
     }
   }, [items, wholesalerId, router])
@@ -97,7 +101,16 @@ function CheckoutContent() {
     }
   }
 
-  if (items.length === 0 || !wholesalerId) {
+  // Show loading state during SSR or if cart data is not yet available
+  if (!isClient) {
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (!items || items.length === 0 || !wholesalerId) {
     return (
       <div className="text-center py-12">
         <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />

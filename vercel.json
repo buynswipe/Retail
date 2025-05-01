@@ -2,11 +2,12 @@
   "version": 2,
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "installCommand": "npm install --no-fund --no-audit",
   "framework": "nextjs",
   "regions": ["bom1"],
   "public": false,
   "cleanUrls": true,
+  "nodeVersion": "18.x",
   "headers": [
     {
       "source": "/api/(.*)",

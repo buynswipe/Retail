@@ -93,26 +93,32 @@ function ChatContent() {
 
     // Filter contacts based on the current user's role
     const filteredContacts = updatedContacts.filter((contact) => {
-      // Always show admin contacts
+      // Safety check - if no user is logged in, don't show any contacts
+      if (!user) return false
+
+      // Always show admin contacts to everyone
       if (contact.role === "admin") return true
 
-      // Always show delivery contacts
-      if (contact.role === "delivery") return true
+      // Always show delivery contacts to everyone except other delivery users
+      if (contact.role === "delivery" && user.role !== "delivery") return true
 
       // If current user is a retailer, show wholesalers
-      if (user?.role === "retailer" && contact.role === "wholesaler") return true
+      if (user.role === "retailer" && contact.role === "wholesaler") return true
 
       // If current user is a wholesaler, show retailers
-      if (user?.role === "wholesaler" && contact.role === "retailer") return true
+      if (user.role === "wholesaler" && contact.role === "retailer") return true
+
+      // If current user is admin, show everyone
+      if (user.role === "admin") return true
 
       // Filter out contacts with the same role as the current user
       // (retailers don't chat with retailers, wholesalers don't chat with wholesalers)
-      if (user?.role === contact.role) return false
+      if (user.role === contact.role) return false
 
       // Filter out the current user
-      if (user?.id === contact.id) return false
+      if (user.id === contact.id) return false
 
-      return true
+      return false // Default to not showing if none of the above conditions are met
     })
 
     // Remove duplicates (same user appearing multiple times)
@@ -267,6 +273,20 @@ function ChatContent() {
     }
   }
 
+  // If no user is logged in, show a message
+  if (!user) {
+    return (
+      <div className="container mx-auto max-w-6xl">
+        <div className="flex items-center justify-center h-[calc(100vh-136px)]">
+          <div className="text-center p-8">
+            <h3 className="text-xl font-semibold mb-2">Please log in</h3>
+            <p className="text-gray-500">You need to be logged in to use the chat feature</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto max-w-6xl">
       <div className="flex flex-col md:flex-row h-[calc(100vh-136px)]">
@@ -275,42 +295,59 @@ function ChatContent() {
           <div className="p-4 border-b">
             <h2 className="text-2xl font-bold">Chats</h2>
           </div>
-          <div className="divide-y">
-            {contacts.map((contact) => (
-              <div
-                key={contact.id}
-                className={`p-4 hover:bg-gray-50 cursor-pointer ${
-                  selectedContact?.id === contact.id ? "bg-gray-100" : ""
-                }`}
-                onClick={() => setSelectedContact(contact)}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="relative">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={contact.avatar || "/placeholder.svg"} alt={contact.name} />
-                      <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    {getStatusIndicator(contact.status)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold truncate">{contact.name}</h3>
-                      <span className="text-xs text-gray-500">{contact.lastMessageTime}</span>
+          {contacts.length > 0 ? (
+            <div className="divide-y">
+              {contacts.map((contact) => (
+                <div
+                  key={contact.id}
+                  className={`p-4 hover:bg-gray-50 cursor-pointer ${
+                    selectedContact?.id === contact.id ? "bg-gray-100" : ""
+                  }`}
+                  onClick={() => setSelectedContact(contact)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="relative">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={contact.avatar || "/placeholder.svg"} alt={contact.name} />
+                        <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      {getStatusIndicator(contact.status)}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-gray-500 truncate">{contact.lastMessage}</p>
-                      {contact.unreadCount > 0 && (
-                        <Badge className="bg-blue-500 text-white">{contact.unreadCount}</Badge>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-semibold truncate">{contact.name}</h3>
+                        <span className="text-xs text-gray-500">{contact.lastMessageTime}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm text-gray-500 truncate">{contact.lastMessage}</p>
+                        {contact.unreadCount > 0 && (
+                          <Badge className="bg-blue-500 text-white">{contact.unreadCount}</Badge>
+                        )}
+                      </div>
+                      <Badge className={`mt-1 ${getRoleColor(contact.role)}`}>
+                        {contact.role.charAt(0).toUpperCase() + contact.role.slice(1)}
+                      </Badge>
                     </div>
-                    <Badge className={`mt-1 ${getRoleColor(contact.role)}`}>
-                      {contact.role.charAt(0).toUpperCase() + contact.role.slice(1)}
-                    </Badge>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 text-center text-gray-500">
+              <p>No contacts available for your role.</p>
+              <p className="text-sm mt-2">
+                {user.role === "admin"
+                  ? "You should see all users. Please check your connection."
+                  : `As a ${user.role}, you can chat with ${
+                      user.role === "retailer"
+                        ? "wholesalers and admin"
+                        : user.role === "wholesaler"
+                          ? "retailers and admin"
+                          : "retailers, wholesalers, and admin"
+                    }`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Chat Window */}

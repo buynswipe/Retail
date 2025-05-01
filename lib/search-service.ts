@@ -74,6 +74,35 @@ export async function searchProducts(
   }
 }
 
+// Search wholesalers by pin code and optional name
+export async function searchWholesalers(pinCode: string, nameQuery = ""): Promise<{ data: User[] | null; error: any }> {
+  try {
+    let supabaseQuery = supabase
+      .from("users")
+      .select("*")
+      .eq("role", "wholesaler")
+      .eq("is_approved", true)
+      .eq("pin_code", pinCode)
+
+    // Add name search if provided
+    if (nameQuery) {
+      supabaseQuery = supabaseQuery.or(`name.ilike.%${nameQuery}%,business_name.ilike.%${nameQuery}%`)
+    }
+
+    const { data, error } = await supabaseQuery.order("business_name", { ascending: true })
+
+    if (error) {
+      console.error("Error searching wholesalers:", error)
+      return { data: null, error }
+    }
+
+    return { data, error: null }
+  } catch (error) {
+    console.error("Error searching wholesalers:", error)
+    return { data: null, error }
+  }
+}
+
 // Search users
 export async function searchUsers(
   query: string,
@@ -87,7 +116,7 @@ export async function searchUsers(
     let supabaseQuery = supabase
       .from("users")
       .select("*")
-      .or(`name.ilike.%${query}%,business_name.ilike.%${query}%,phone_number.ilike.%${query}%`)
+      .or(`name.ilike.%${query}%,business_name.ilike.%${query}%,phone_number.ilike.%${query}%,email.ilike.%${query}%`)
 
     // Apply filters
     if (filters) {

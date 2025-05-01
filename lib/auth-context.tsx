@@ -48,6 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        if (currentUser) {
+          // Set a cookie to maintain the session across page refreshes
+          document.cookie = `userRole=${currentUser.role}; path=/; max-age=86400;`
+        }
+
         setUser(currentUser)
       } catch (error) {
         console.error("Error loading user:", error)
@@ -63,6 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signOut()
       setUser(null)
+
+      // Clear the userRole cookie
+      document.cookie = "userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;"
+
       // Redirect to login page after logout
       router.push("/login")
     } catch (error) {

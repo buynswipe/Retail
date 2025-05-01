@@ -1,0 +1,12 @@
+# RetailBandhu robots.txt
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /retailer/dashboard
+Disallow: /wholesaler/dashboard
+Disallow: /delivery/dashboard
+Disallow: /admin/
+Disallow: /profile
+Disallow: /notifications
+
+Sitemap: https://retailbandhu.com/sitemap.xml

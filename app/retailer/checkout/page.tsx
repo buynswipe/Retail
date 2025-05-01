@@ -22,7 +22,7 @@ function CheckoutContent() {
   const router = useRouter()
   const { t } = useTranslation()
   const { user } = useAuth()
-  const { items = [], wholesalerId = "", wholesalerName = "", totalAmount = 0, clearCart } = useCart() || {}
+  const { items = [], wholesalerId = "", wholesalerName = "", totalAmount = 0, clearCart = () => {} } = useCart() || {}
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi")
   const [isProcessing, setIsProcessing] = useState(false)
   const [deliveryCharge] = useState(50) // Fixed delivery charge
@@ -40,12 +40,46 @@ function CheckoutContent() {
   }, [items, wholesalerId, router])
 
   const handlePlaceOrder = async () => {
-    if (!user || !wholesalerId) return
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to place an order.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!wholesalerId) {
+      toast({
+        title: "Error",
+        description: "No wholesaler selected for this order.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!items || items.length === 0) {
+      toast({
+        title: "Error",
+        description: "Your cart is empty. Add some products before checking out.",
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsProcessing(true)
     try {
+      // Validate cart items
+      const validItems = items.filter(
+        (item) => item && item.product && item.product.id && item.quantity && item.product.price,
+      )
+
+      if (validItems.length === 0) {
+        throw new Error("No valid items in cart")
+      }
+
       // Create order items from cart
-      const orderItems = items.map((item) => ({
+      const orderItems = validItems.map((item) => ({
         product_id: item.product.id,
         quantity: item.quantity,
         unit_price: item.product.price,
@@ -94,7 +128,7 @@ function CheckoutContent() {
       console.error("Error placing order:", error)
       toast({
         title: "Error",
-        description: "Failed to place order. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to place order. Please try again.",
         variant: "destructive",
       })
       setIsProcessing(false)
@@ -143,32 +177,39 @@ function CheckoutContent() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {items.map((item) => (
-                  <div key={item.product.id} className="flex items-center gap-4 border-b pb-4 last:border-0 last:pb-0">
-                    <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden">
-                      {item.product.image_url ? (
-                        <img
-                          src={item.product.image_url || "/placeholder.svg"}
-                          alt={item.product.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Package className="h-8 w-8 text-gray-400" />
+                {items.map(
+                  (item) =>
+                    item &&
+                    item.product && (
+                      <div
+                        key={item.product.id}
+                        className="flex items-center gap-4 border-b pb-4 last:border-0 last:pb-0"
+                      >
+                        <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden">
+                          {item.product.image_url ? (
+                            <img
+                              src={item.product.image_url || "/placeholder.svg"}
+                              alt={item.product.name || "Product"}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Package className="h-8 w-8 text-gray-400" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium">{item.product.name}</h4>
-                      <p className="text-sm text-gray-500">
-                        {item.quantity} x ₹{item.product.price.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold">₹{(item.product.price * item.quantity).toFixed(2)}</p>
-                    </div>
-                  </div>
-                ))}
+                        <div className="flex-1">
+                          <h4 className="font-medium">{item.product.name || "Unknown Product"}</h4>
+                          <p className="text-sm text-gray-500">
+                            {item.quantity || 0} x ₹{(item.product.price || 0).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">₹{((item.product.price || 0) * (item.quantity || 0)).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ),
+                )}
               </div>
             </CardContent>
           </Card>

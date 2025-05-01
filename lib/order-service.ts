@@ -1,4 +1,4 @@
-import { supabase } from "./supabase-client"
+import { supabase, supabaseAdmin } from "./supabase-client"
 import type { Order, OrderItem, OrderStatus, PaymentStatus } from "./types"
 
 // Generate a unique order number
@@ -10,10 +10,11 @@ function generateOrderNumber(): string {
   return `ORD${timestamp}${random}`
 }
 
-// Get all orders
+// Get all orders - ADMIN FUNCTION
 export async function getAllOrders(): Promise<{ data: Order[] | null; error: any }> {
   try {
-    const { data, error } = await supabase
+    // Use admin client to bypass RLS
+    const { data, error } = await supabaseAdmin
       .from("orders")
       .select(`
         *,
@@ -24,13 +25,13 @@ export async function getAllOrders(): Promise<{ data: Order[] | null; error: any
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching orders:", error)
+      console.error("Error fetching all orders:", error)
       return { data: null, error }
     }
 
     return { data, error: null }
   } catch (error) {
-    console.error("Error fetching orders:", error)
+    console.error("Error fetching all orders:", error)
     return { data: null, error }
   }
 }

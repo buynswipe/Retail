@@ -203,10 +203,10 @@ export async function signOut() {
     }
 
     // Clear any local storage or cookies related to authentication
-    localStorage.removeItem("auth_user")
+    localStorage.removeItem("currentUser")
 
     // Clear any other auth-related data
-    document.cookie = "userRole=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
+    document.cookie = "userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;"
 
     return { success: true }
   } catch (error) {

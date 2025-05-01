@@ -24,6 +24,12 @@ interface CartContextType {
   clearCart: () => void
   cartTotal: number
   cartCount: number
+  items?: CartItem[] // Alias for cartItems for backward compatibility
+  addItem?: (product: Product, quantity: number) => void // Simplified add method
+  updateQuantity?: (productId: string, quantity: number) => void // Simplified update method
+  wholesalerId?: string // Current wholesaler ID
+  wholesalerName?: string // Current wholesaler name
+  totalAmount?: number // Alias for cartTotal
 }
 
 // Create the cart context with default values
@@ -35,6 +41,12 @@ const CartContext = createContext<CartContextType>({
   clearCart: () => {},
   cartTotal: 0,
   cartCount: 0,
+  items: [],
+  addItem: () => {},
+  updateQuantity: () => {},
+  wholesalerId: "",
+  wholesalerName: "",
+  totalAmount: 0,
 })
 
 // Custom hook to use the cart context
@@ -45,6 +57,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [cartTotal, setCartTotal] = useState(0)
   const [cartCount, setCartCount] = useState(0)
+  const [wholesalerId, setWholesalerId] = useState<string>("")
+  const [wholesalerName, setWholesalerName] = useState<string>("")
 
   // Load cart from localStorage on initial render
   useEffect(() => {
@@ -128,6 +142,44 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem("cart")
   }
 
+  // Simplified add item method that matches the interface expected by product detail page
+  const addItem = (product: Product, quantity: number) => {
+    if (!product) return
+
+    const item: CartItem = {
+      user_id: "current-user", // This will be replaced with actual user ID when available
+      product_id: product.id,
+      quantity: quantity,
+      product: product,
+    }
+
+    addToCart(item)
+
+    // If this is the first item, set the wholesaler info
+    if (cartItems.length === 0 && product.wholesaler_id) {
+      setWholesalerId(product.wholesaler_id)
+      setWholesalerName(product.wholesaler_name || "Wholesaler")
+    }
+  }
+
+  // Simplified update quantity method
+  const updateQuantity = (productId: string, quantity: number) => {
+    setCartItems((prevItems) => {
+      const existingItemIndex = prevItems.findIndex((i) => i.product_id === productId)
+
+      if (existingItemIndex >= 0) {
+        const updatedItems = [...prevItems]
+        updatedItems[existingItemIndex] = {
+          ...updatedItems[existingItemIndex],
+          quantity: quantity,
+        }
+        return updatedItems
+      }
+
+      return prevItems
+    })
+  }
+
   return (
     <CartContext.Provider
       value={{
@@ -138,6 +190,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCart,
         cartTotal,
         cartCount,
+        // Aliases and additional properties for backward compatibility
+        items: cartItems,
+        addItem,
+        updateQuantity,
+        wholesalerId,
+        wholesalerName,
+        totalAmount: cartTotal,
       }}
     >
       {children}

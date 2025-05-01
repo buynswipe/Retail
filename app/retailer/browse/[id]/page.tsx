@@ -20,7 +20,7 @@ function ProductDetailsContent() {
   const router = useRouter()
   const { t } = useTranslation()
   const { user } = useAuth()
-  const { addItem, items, updateQuantity } = useCart()
+  const { addItem = () => {}, items = [], updateQuantity = () => {} } = useCart() || {}
   const [product, setProduct] = useState<Product | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
@@ -33,8 +33,8 @@ function ProductDetailsContent() {
 
   useEffect(() => {
     // Check if product is already in cart
-    if (product) {
-      const cartItem = items.find((item) => item.product.id === product.id)
+    if (product && items && Array.isArray(items)) {
+      const cartItem = items.find((item) => item.product?.id === product.id)
       if (cartItem) {
         setQuantity(cartItem.quantity)
       } else {
@@ -50,6 +50,9 @@ function ProductDetailsContent() {
       if (error) {
         throw error
       }
+      if (!data) {
+        throw new Error("Product not found")
+      }
       setProduct(data)
     } catch (error) {
       console.error("Error loading product details:", error)
@@ -58,6 +61,10 @@ function ProductDetailsContent() {
         description: "Failed to load product details. Please try again.",
         variant: "destructive",
       })
+      // Navigate back to browse after a short delay if product can't be loaded
+      setTimeout(() => {
+        router.push("/retailer/browse")
+      }, 3000)
     } finally {
       setIsLoading(false)
     }
@@ -95,7 +102,8 @@ function ProductDetailsContent() {
     }
   }
 
-  const isInCart = product && items.some((item) => item.product.id === product.id)
+  const isInCart =
+    product && items && Array.isArray(items) ? items.some((item) => item.product?.id === product.id) : false
 
   if (isLoading) {
     return (

@@ -101,25 +101,35 @@ export function logError(error: AppError, context?: any): void {
   console.error("Error:", error, "Context:", context)
 }
 
-/**
- * Generic error handler function that can be used throughout the application
- * @param error The error object
- * @param message Optional custom error message
- * @param defaultReturn Optional default return value in case of error
- * @returns The default return value if provided, otherwise undefined
- */
-export function errorHandler<T>(error: any, message: string, defaultReturn?: T): T {
-  // Convert to AppError if not already
-  const appError = error.type ? (error as AppError) : handleSupabaseError(error)
+import { toast } from "@/hooks/use-toast"
 
-  // Log the error
-  logError(appError, { message })
+export function errorHandler(error: unknown, context: string, fallbackValue?: any): any {
+  console.error(`Error in ${context}:`, error)
 
-  // Display error message if in development
-  if (process.env.NODE_ENV === "development") {
-    console.error(`${message}:`, error)
+  let errorMessage = "An unexpected error occurred"
+
+  if (error instanceof Error) {
+    errorMessage = error.message
+  } else if (typeof error === "string") {
+    errorMessage = error
+  } else if (error && typeof error === "object" && "message" in error) {
+    errorMessage = String((error as any).message)
   }
 
-  // Return default value if provided
-  return defaultReturn as T
+  // Log to monitoring service in production
+  if (process.env.NODE_ENV === "production") {
+    // logErrorToService(context, errorMessage, error)
+  }
+
+  // Show toast notification if not in a server component
+  if (typeof window !== "undefined") {
+    toast({
+      title: "Error",
+      description: `${context}: ${errorMessage}`,
+      variant: "destructive",
+    })
+  }
+
+  // Return fallback value if provided
+  return fallbackValue
 }

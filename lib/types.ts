@@ -2,6 +2,7 @@
 export interface User {
   id: string
   phone_number: string
+  email?: string
   role: UserRole
   name?: string
   business_name?: string
@@ -15,7 +16,6 @@ export interface User {
   updated_at?: string
   profile_image_url?: string
   status?: "online" | "away" | "offline"
-  email?: string
 }
 
 export type UserRole = "admin" | "retailer" | "wholesaler" | "delivery"

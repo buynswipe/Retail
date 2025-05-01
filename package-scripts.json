@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "analyze": "cross-env ANALYZE=true next build",
+    "postbuild": "next-sitemap",
+    "deploy:prepare": "ts-node --skip-project scripts/deploy-setup.ts",
+    "deploy": "npm run deploy:prepare && npm run build",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "db:push": "node scripts/db-push.js",
+    "db:seed": "node scripts/db-seed.js"
+  }
+}

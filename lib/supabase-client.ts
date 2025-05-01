@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+export { createClient } from "@supabase/supabase-js"
 import { getFromMemoryCache, setInMemoryCache, generateCacheKey } from "./cache-utils"
 
 // Add this function to check for localStorage values in the browser environment
@@ -25,6 +26,16 @@ const isMissingEnvVars =
 
 // Create the Supabase client
 export const supabase = isMissingEnvVars ? createMockSupabaseClient() : createClient(supabaseUrl, supabaseAnonKey)
+
+// Create a service role client for admin operations that bypass RLS
+export const supabaseAdmin = isMissingEnvVars
+  ? createMockSupabaseClient()
+  : createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || "your-service-role-key", {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
 
 // Cached version of supabase select
 export async function cachedSelect<T = any>(

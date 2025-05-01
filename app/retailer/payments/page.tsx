@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
 import { getPaymentsByUserId, getPaymentStatistics } from "@/lib/payment-service"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "@/components/ui/use-toast"
 
 function PaymentsContent() {
   const { t } = useTranslation()
@@ -37,11 +38,24 @@ function PaymentsContent() {
       const { data, error } = await getPaymentsByUserId(user.id, "retailer")
       if (error) {
         console.error("Error loading payments:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load payment history. Please try again.",
+          variant: "destructive",
+        })
       } else if (data) {
-        setPayments(data)
+        setPayments(Array.isArray(data) ? data : [])
+      } else {
+        setPayments([])
       }
     } catch (error) {
       console.error("Error loading payments:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load payment history. Please try again.",
+        variant: "destructive",
+      })
+      setPayments([])
     } finally {
       setIsLoading(false)
     }
@@ -54,11 +68,27 @@ function PaymentsContent() {
       const { data, error } = await getPaymentStatistics(user.id, "retailer")
       if (error) {
         console.error("Error loading payment statistics:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load payment statistics.",
+          variant: "destructive",
+        })
       } else if (data) {
         setStatistics(data)
+      } else {
+        setStatistics({
+          total_payments: 0,
+          completed_amount: 0,
+          pending_amount: 0,
+        })
       }
     } catch (error) {
       console.error("Error loading payment statistics:", error)
+      setStatistics({
+        total_payments: 0,
+        completed_amount: 0,
+        pending_amount: 0,
+      })
     }
   }
 
@@ -122,7 +152,7 @@ function PaymentsContent() {
       </div>
 
       {/* Payment Statistics */}
-      {statistics && (
+      {statistics && Object.keys(statistics).length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card>
             <CardContent className="p-6">
@@ -141,7 +171,7 @@ function PaymentsContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Completed Payments</p>
-                  <h3 className="text-3xl font-bold">₹{statistics.completed_amount.toFixed(2)}</h3>
+                  <h3 className="text-3xl font-bold">₹{statistics?.completed_amount?.toFixed(2) || "0.00"}</h3>
                 </div>
                 <CheckCircle className="h-8 w-8 text-green-500" />
               </div>
@@ -153,7 +183,7 @@ function PaymentsContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Pending Payments</p>
-                  <h3 className="text-3xl font-bold">₹{statistics.pending_amount.toFixed(2)}</h3>
+                  <h3 className="text-3xl font-bold">₹{statistics?.pending_amount?.toFixed(2) || "0.00"}</h3>
                 </div>
                 <AlertCircle className="h-8 w-8 text-yellow-500" />
               </div>
@@ -233,7 +263,7 @@ function PaymentsContent() {
                       </div>
 
                       <div className="text-right">
-                        <p className="text-lg font-semibold">₹{payment.amount.toFixed(2)}</p>
+                        <p className="text-lg font-semibold">₹{payment.amount ? payment.amount.toFixed(2) : "0.00"}</p>
                         {payment.payment_status === "pending" && payment.payment_method === "upi" && (
                           <Button asChild size="sm" className="mt-2 bg-blue-500 hover:bg-blue-600">
                             <Link href={`/retailer/orders?id=${payment.order_id}`}>Complete Payment</Link>

@@ -34,19 +34,19 @@ export function ErrorBoundary({ error, reset, children }: ErrorBoundaryProps) {
 
   useEffect(() => {
     // Customize error message based on error type
-    if (error.message.includes("404") || error.message.includes("not found")) {
+    if (error.message && (error.message.includes("404") || error.message.includes("not found"))) {
       setErrorInfo({
         title: "Page not found",
         description: "The page you're looking for doesn't exist or you don't have access to it.",
         action: "Go back",
       })
-    } else if (error.message.includes("401") || error.message.includes("unauthorized")) {
+    } else if (error.message && (error.message.includes("401") || error.message.includes("unauthorized"))) {
       setErrorInfo({
         title: "Unauthorized",
         description: "You don't have permission to access this page.",
         action: "Go to dashboard",
       })
-    } else if (error.message.includes("timeout") || error.message.includes("network")) {
+    } else if (error.message && (error.message.includes("timeout") || error.message.includes("network"))) {
       setErrorInfo({
         title: "Connection error",
         description: "Please check your internet connection and try again.",

@@ -2,208 +2,194 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { TranslationProvider, useTranslation } from "../../components/translation-provider"
-import Navbar from "../../components/navbar"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "@/components/ui/use-toast"
-import { Toaster } from "@/components/ui/toaster"
-import { useAuth } from "@/lib/auth-context"
-import { supabase } from "@/lib/supabase-client"
-import { Package, Calendar, ChevronRight, Loader2 } from "lucide-react"
-import type { Order } from "@/lib/types"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
+import { orderService } from "@/lib/order-service"
+import { EmptyState } from "@/app/components/empty-state"
+import { formatCurrency, formatDate } from "@/lib/utils"
 
-function OrdersContent() {
+export default function RetailerOrdersPage() {
   const router = useRouter()
-  const { t } = useTranslation()
-  const { user } = useAuth()
-  const [orders, setOrders] = useState<Order[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("all")
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalOrders, setTotalOrders] = useState(0)
+  const ordersPerPage = 10
 
   useEffect(() => {
-    if (user) {
-      loadOrders()
-    }
-  }, [user])
-
-  const loadOrders = async () => {
-    if (!user) return
-
-    setIsLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(`
-          *,
-          wholesaler:wholesaler_id(id, business_name)
-        `)
-        .eq("retailer_id", user.id)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        throw error
+    async function fetchOrders() {
+      try {
+        setLoading(true)
+        const { data, count } = await orderService.getRetailerOrders({
+          page: currentPage,
+          limit: ordersPerPage,
+        })
+        setOrders(data)
+        setTotalOrders(count)
+        setTotalPages(Math.ceil(count / ordersPerPage))
+      } catch (err) {
+        console.error("Error fetching orders:", err)
+        setError("Failed to load orders. Please try again later.")
+      } finally {
+        setLoading(false)
       }
-
-      setOrders(data || [])
-    } catch (error) {
-      console.error("Error loading orders:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load orders. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
     }
+
+    fetchOrders()
+  }, [currentPage])
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page)
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const handleViewOrder = (orderId: string) => {
-    router.push(`/retailer/orders/${orderId}`)
+  const renderPagination = () => {
+    if (totalPages <= 1) return null
+
+    return (
+      <Pagination className="mt-6">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
+              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              aria-disabled={currentPage === 1}
+            />
+          </PaginationItem>
+
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            // Show pages around current page
+            let pageToShow
+            if (totalPages <= 5) {
+              pageToShow = i + 1
+            } else if (currentPage <= 3) {
+              pageToShow = i + 1
+            } else if (currentPage >= totalPages - 2) {
+              pageToShow = totalPages - 4 + i
+            } else {
+              pageToShow = currentPage - 2 + i
+            }
+
+            return (
+              <PaginationItem key={pageToShow}>
+                <PaginationLink onClick={() => handlePageChange(pageToShow)} isActive={currentPage === pageToShow}>
+                  {pageToShow}
+                </PaginationLink>
+              </PaginationItem>
+            )
+          })}
+
+          <PaginationItem>
+            <PaginationNext
+              onClick={() => currentPage < totalPages && handlePageChange(currentPage + 1)}
+              className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              aria-disabled={currentPage === totalPages}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    )
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "placed":
-        return "bg-blue-500"
-      case "confirmed":
-        return "bg-green-500"
-      case "rejected":
-        return "bg-red-500"
-      case "dispatched":
-        return "bg-purple-500"
-      case "delivered":
-        return "bg-green-700"
-      case "cancelled":
-        return "bg-gray-500"
-      default:
-        return "bg-gray-500"
-    }
+  if (loading && orders.length === 0) {
+    return <div className="flex justify-center items-center h-64">Loading orders...</div>
   }
 
-  const getPaymentStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500"
-      case "pending":
-        return "bg-yellow-500"
-      case "failed":
-        return "bg-red-500"
-      default:
-        return "bg-gray-500"
-    }
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-  }
-
-  const filteredOrders = activeTab === "all" ? orders : orders.filter((order) => order.status === activeTab)
-
-  return (
-    <div className="container mx-auto max-w-6xl">
-      <h1 className="text-3xl font-bold mb-6">My Orders</h1>
-
-      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="all">All Orders</TabsTrigger>
-          <TabsTrigger value="placed">Placed</TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmed</TabsTrigger>
-          <TabsTrigger value="dispatched">Dispatched</TabsTrigger>
-          <TabsTrigger value="delivered">Delivered</TabsTrigger>
-          <TabsTrigger value="rejected">Rejected</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={activeTab}>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mr-2" />
-              <span>Loading orders...</span>
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Package className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                <h2 className="text-2xl font-bold mb-2">No Orders Found</h2>
-                <p className="text-gray-500 mb-6">
-                  {activeTab === "all"
-                    ? "You haven't placed any orders yet."
-                    : `You don't have any ${activeTab} orders.`}
-                </p>
-                <Button onClick={() => router.push("/retailer/browse")} className="bg-blue-500 hover:bg-blue-600">
-                  Browse Products
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {filteredOrders.map((order) => (
-                <Card
-                  key={order.id}
-                  className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => handleViewOrder(order.id)}
-                >
-                  <CardContent className="p-0">
-                    <div className="p-4 border-b">
-                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-                        <div>
-                          <h3 className="font-bold text-lg">Order #{order.order_number}</h3>
-                          <p className="text-gray-500 text-sm flex items-center">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {formatDate(order.created_at)}
-                          </p>
-                        </div>
-                        <div className="mt-2 md:mt-0 flex flex-col md:flex-row items-start md:items-center gap-2">
-                          <Badge className={`${getStatusColor(order.status)} text-white`}>
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                          </Badge>
-                          <Badge className={`${getPaymentStatusColor(order.payment_status)} text-white`}>
-                            {order.payment_status.charAt(0).toUpperCase() + order.payment_status.slice(1)}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center">
-                      <div>
-                        <p className="font-medium">
-                          Wholesaler: {order.wholesaler?.business_name || "Unknown Wholesaler"}
-                        </p>
-                        <p className="text-gray-500">Payment Method: {order.payment_method.toUpperCase()}</p>
-                      </div>
-                      <div className="mt-2 md:mt-0 flex items-center">
-                        <p className="font-bold text-lg mr-2">₹{order.total_amount.toFixed(2)}</p>
-                        <ChevronRight className="h-5 w-5 text-gray-400" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      <Toaster />
-    </div>
-  )
-}
-
-export default function OrdersPage() {
-  return (
-    <TranslationProvider>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow pt-20 pb-20 px-4">
-          <OrdersContent />
-        </main>
+  if (error) {
+    return (
+      <div className="p-4">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <p>{error}</p>
+          <Button variant="outline" className="mt-2" onClick={() => window.location.reload()}>
+            Try Again
+          </Button>
+        </div>
       </div>
-    </TranslationProvider>
+    )
+  }
+
+  if (orders.length === 0) {
+    return (
+      <EmptyState
+        title="No Orders Yet"
+        description="You haven't placed any orders yet. Browse products to place your first order."
+        actionLabel="Browse Products"
+        actionHref="/retailer/browse"
+      />
+    )
+  }
+
+  return (
+    <div className="container mx-auto p-4 space-y-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Your Orders</h1>
+        <p className="text-gray-500">Total Orders: {totalOrders}</p>
+      </div>
+
+      <div className="grid gap-4">
+        {orders.map((order) => (
+          <Card key={order.id} className="overflow-hidden hover:shadow-md transition-shadow">
+            <CardHeader className="bg-gray-50 pb-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-lg">Order #{order.order_number}</CardTitle>
+                  <p className="text-sm text-gray-500">Placed on {formatDate(order.created_at)}</p>
+                </div>
+                <div className="text-right">
+                  <span
+                    className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                      order.status === "delivered"
+                        ? "bg-green-100 text-green-800"
+                        : order.status === "processing"
+                          ? "bg-blue-100 text-blue-800"
+                          : order.status === "shipped"
+                            ? "bg-purple-100 text-purple-800"
+                            : order.status === "cancelled"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                  </span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="font-medium">{order.wholesaler_name || "Wholesaler"}</p>
+                  <p className="text-sm text-gray-500">
+                    {order.items_count} {order.items_count === 1 ? "item" : "items"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold">{formatCurrency(order.total_amount)}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => router.push(`/retailer/orders/${order.id}`)}
+                  >
+                    View Details
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {renderPagination()}
+    </div>
   )
 }

@@ -1,183 +1,202 @@
 "use client"
 
-import { useState } from "react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useState, useMemo, useCallback } from "react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { Check } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { useCart } from "@/lib/cart-context"
+import { OptimizedImage } from "./optimized-image"
 
-interface ProductVariant {
+export interface Variant {
   id: string
   name: string
   price: number
   stock: number
-  attributes: Record<string, string>
+  image_url?: string
+  weight: string
+  unit: string
 }
 
 interface ProductVariantsProps {
-  variants: ProductVariant[]
-  onVariantSelect: (variant: ProductVariant) => void
-  selectedVariantId?: string
-  className?: string
+  productId: string
+  productName: string
+  variants: Variant[]
+  onVariantSelect?: (variant: Variant) => void
 }
 
-export default function ProductVariants({
-  variants,
-  onVariantSelect,
-  selectedVariantId,
-  className,
-}: ProductVariantsProps) {
-  const [selectedId, setSelectedId] = useState<string>(selectedVariantId || variants[0]?.id || "")
+export function ProductVariants({ productId, productName, variants, onVariantSelect }: ProductVariantsProps) {
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(variants.length > 0 ? variants[0].id : "")
+  const [quantity, setQuantity] = useState<number>(1)
+  const { addToCart } = useCart()
 
-  // Get all unique attribute types across variants
-  const attributeTypes = Array.from(new Set(variants.flatMap((variant) => Object.keys(variant.attributes))))
+  // Memoize the selected variant to prevent unnecessary recalculations
+  const selectedVariant = useMemo(() => {
+    return variants.find((variant) => variant.id === selectedVariantId) || variants[0]
+  }, [variants, selectedVariantId])
 
-  // Get all unique values for each attribute type
-  const attributeValues: Record<string, string[]> = {}
-  attributeTypes.forEach((attrType) => {
-    attributeValues[attrType] = Array.from(
-      new Set(variants.map((variant) => variant.attributes[attrType]).filter(Boolean)),
-    )
-  })
+  // Memoize the available stock for the selected variant
+  const availableStock = useMemo(() => {
+    return selectedVariant ? selectedVariant.stock : 0
+  }, [selectedVariant])
 
-  // Find the selected variant
-  const selectedVariant = variants.find((v) => v.id === selectedId) || variants[0]
+  // Memoize the formatted price to prevent recalculation on every render
+  const formattedPrice = useMemo(() => {
+    if (!selectedVariant) return "₹0.00"
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+    }).format(selectedVariant.price)
+  }, [selectedVariant])
 
-  // Handle variant selection
-  const handleVariantSelect = (variant: ProductVariant) => {
-    setSelectedId(variant.id)
-    onVariantSelect(variant)
-  }
+  // Memoize the variant options to prevent recreating the array on every render
+  const variantOptions = useMemo(() => {
+    return variants.map((variant) => ({
+      id: variant.id,
+      label: `${variant.weight} ${variant.unit} - ₹${variant.price.toFixed(2)}`,
+      inStock: variant.stock > 0,
+    }))
+  }, [variants])
 
-  // Handle attribute selection
-  const handleAttributeSelect = (attrType: string, value: string) => {
-    // Find a variant that matches the current selection but with the new attribute value
-    const currentAttributes = { ...selectedVariant.attributes }
-    currentAttributes[attrType] = value
+  const handleVariantChange = useCallback(
+    (value: string) => {
+      setSelectedVariantId(value)
+      const newVariant = variants.find((v) => v.id === value)
+      if (newVariant && onVariantSelect) {
+        onVariantSelect(newVariant)
+      }
+      // Reset quantity to 1 when changing variants
+      setQuantity(1)
+    },
+    [variants, onVariantSelect],
+  )
 
-    // Find the best matching variant
-    const bestMatch = findBestMatchingVariant(variants, currentAttributes)
-
-    if (bestMatch) {
-      setSelectedId(bestMatch.id)
-      onVariantSelect(bestMatch)
+  const incrementQuantity = useCallback(() => {
+    if (quantity < availableStock) {
+      setQuantity((prev) => prev + 1)
     }
-  }
+  }, [quantity, availableStock])
 
-  // Find the best matching variant based on attributes
-  const findBestMatchingVariant = (
-    variants: ProductVariant[],
-    targetAttributes: Record<string, string>,
-  ): ProductVariant | undefined => {
-    // Calculate match score for each variant
-    const variantsWithScores = variants.map((variant) => {
-      let score = 0
-      const variantAttrs = variant.attributes
+  const decrementQuantity = useCallback(() => {
+    if (quantity > 1) {
+      setQuantity((prev) => prev - 1)
+    }
+  }, [quantity])
 
-      // Count matching attributes
-      Object.entries(targetAttributes).forEach(([key, value]) => {
-        if (variantAttrs[key] === value) {
-          score++
-        }
+  const handleAddToCart = useCallback(() => {
+    if (selectedVariant && quantity > 0) {
+      addToCart({
+        productId,
+        productName,
+        variantId: selectedVariant.id,
+        variantName: `${selectedVariant.weight} ${selectedVariant.unit}`,
+        price: selectedVariant.price,
+        quantity,
+        imageUrl: selectedVariant.image_url,
+        maxQuantity: selectedVariant.stock,
       })
+    }
+  }, [productId, productName, selectedVariant, quantity, addToCart])
 
-      return { variant, score }
-    })
-
-    // Sort by score (highest first)
-    variantsWithScores.sort((a, b) => b.score - a.score)
-
-    // Return the variant with the highest score
-    return variantsWithScores[0]?.variant
-  }
-
-  // Check if a variant with specific attribute is available
-  const isAttributeAvailable = (attrType: string, value: string): boolean => {
-    return variants.some((variant) => variant.attributes[attrType] === value && variant.stock > 0)
+  // Early return if no variants are available
+  if (!variants.length) {
+    return (
+      <Card className="border-red-200 bg-red-50">
+        <CardContent className="p-4">
+          <p className="text-red-600">No variants available for this product</p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <div className={cn("space-y-6", className)}>
-      {attributeTypes.map((attrType) => (
-        <div key={attrType} className="space-y-2">
-          <h3 className="text-sm font-medium capitalize text-gray-700">{attrType.replace(/_/g, " ")}</h3>
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row gap-4">
+        {selectedVariant?.image_url && (
+          <div className="w-full md:w-1/3 mb-4 md:mb-0">
+            <OptimizedImage
+              src={selectedVariant.image_url}
+              alt={`${productName} - ${selectedVariant.weight} ${selectedVariant.unit}`}
+              width={300}
+              height={300}
+              className="rounded-md object-cover w-full h-auto"
+            />
+          </div>
+        )}
 
-          {/* For attributes with few values, use buttons */}
-          {attributeValues[attrType].length <= 5 ? (
-            <div className="flex flex-wrap gap-2">
-              {attributeValues[attrType].map((value) => {
-                const isSelected = selectedVariant.attributes[attrType] === value
-                const isAvailable = isAttributeAvailable(attrType, value)
-
-                return (
-                  <Button
-                    key={`${attrType}-${value}`}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className={cn("h-9 px-3", !isAvailable && "opacity-50 cursor-not-allowed")}
-                    onClick={() => isAvailable && handleAttributeSelect(attrType, value)}
-                    disabled={!isAvailable}
-                  >
-                    {isSelected && <Check className="mr-1 h-3 w-3" />}
-                    {value}
-                  </Button>
-                )
-              })}
-            </div>
-          ) : (
-            /* For attributes with many values, use radio group */
+        <div className="w-full md:w-2/3">
+          <div className="mb-4">
+            <h3 className="text-lg font-medium mb-2" id="variants-label">
+              Select Variant
+            </h3>
             <RadioGroup
-              value={selectedVariant.attributes[attrType]}
-              onValueChange={(value) => handleAttributeSelect(attrType, value)}
-              className="flex flex-col space-y-1"
+              value={selectedVariantId}
+              onValueChange={handleVariantChange}
+              className="space-y-2"
+              aria-labelledby="variants-label"
             >
-              {attributeValues[attrType].map((value) => {
-                const isAvailable = isAttributeAvailable(attrType, value)
-
-                return (
-                  <div key={`${attrType}-${value}`} className="flex items-center space-x-2">
-                    <RadioGroupItem value={value} id={`${attrType}-${value}`} disabled={!isAvailable} />
-                    <Label htmlFor={`${attrType}-${value}`} className={cn(!isAvailable && "opacity-50")}>
-                      {value}
-                      {!isAvailable && " (Out of stock)"}
-                    </Label>
-                  </div>
-                )
-              })}
+              {variantOptions.map((option) => (
+                <div key={option.id} className="flex items-center space-x-2">
+                  <RadioGroupItem
+                    value={option.id}
+                    id={`variant-${option.id}`}
+                    disabled={!option.inStock}
+                    aria-label={option.label}
+                  />
+                  <Label htmlFor={`variant-${option.id}`} className={!option.inStock ? "text-gray-400" : ""}>
+                    {option.label}
+                    {!option.inStock && <span className="ml-2 text-red-500">(Out of stock)</span>}
+                  </Label>
+                </div>
+              ))}
             </RadioGroup>
-          )}
-        </div>
-      ))}
+          </div>
 
-      {/* Display selected variant info */}
-      {selectedVariant && (
-        <div className="rounded-md bg-gray-50 p-3">
+          <div className="mb-4">
+            <h3 className="text-lg font-medium mb-2" id="quantity-label">
+              Quantity
+            </h3>
+            <div className="flex items-center space-x-2" aria-labelledby="quantity-label">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={decrementQuantity}
+                disabled={quantity <= 1}
+                aria-label="Decrease quantity"
+              >
+                -
+              </Button>
+              <span className="w-12 text-center" aria-live="polite" aria-atomic="true">
+                {quantity}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={incrementQuantity}
+                disabled={quantity >= availableStock}
+                aria-label="Increase quantity"
+              >
+                +
+              </Button>
+              <span className="text-sm text-gray-500 ml-2">{availableStock} available</span>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Selected:</span>
-            <span className="text-sm text-gray-500">{Object.values(selectedVariant.attributes).join(" / ")}</span>
-          </div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Price:</span>
-            <span className="text-sm font-semibold">₹{selectedVariant.price.toFixed(2)}</span>
-          </div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Stock:</span>
-            <span
-              className={cn(
-                "text-sm",
-                selectedVariant.stock > 10
-                  ? "text-green-600"
-                  : selectedVariant.stock > 0
-                    ? "text-amber-600"
-                    : "text-red-600",
-              )}
+            <div className="text-xl font-bold" aria-live="polite">
+              {formattedPrice}
+            </div>
+            <Button
+              onClick={handleAddToCart}
+              disabled={!selectedVariant || availableStock === 0}
+              aria-label={`Add ${productName} to cart`}
             >
-              {selectedVariant.stock > 0 ? `${selectedVariant.stock} available` : "Out of stock"}
-            </span>
+              Add to Cart
+            </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

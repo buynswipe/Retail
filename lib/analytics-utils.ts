@@ -107,29 +107,27 @@ export function exportToPDF(
 
   // Prepare table data
   const tableColumn = columns.map((col) => col.title)
-  const tableRows = data
-    .map((item) => columns.map((col) => item[col.key]))(
-      // Add table
-      doc as any,
-    )
-    .autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 40,
-      theme: "grid",
-      styles: {
-        fontSize: 10,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [66, 66, 66],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-    })
+  const tableRows = data.map((item) => columns.map((col) => item[col.key]))
+
+  // Add table
+  ;(doc as any).autoTable({
+    head: [tableColumn],
+    body: tableRows,
+    startY: 40,
+    theme: "grid",
+    styles: {
+      fontSize: 10,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: [66, 66, 66],
+      textColor: 255,
+      fontStyle: "bold",
+    },
+    alternateRowStyles: {
+      fillColor: [245, 245, 245],
+    },
+  })
 
   // Save PDF
   doc.save(`${filename}.pdf`)

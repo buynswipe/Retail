@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, Filter, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { ProductFilter } from "@/lib/types"
 import { getProductCategories, getProductBrands, getProductPriceRange } from "@/lib/product-filter"
+import { debounce } from "@/lib/utils"
 
 export default function ProductSearch() {
   const router = useRouter()
@@ -33,6 +34,7 @@ export default function ProductSearch() {
   const [brands, setBrands] = useState<string[]>([])
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000])
   const [maxPriceLimit, setMaxPriceLimit] = useState(1000)
+  const [isLoading, setIsLoading] = useState(false)
 
   const [filters, setFilters] = useState<ProductFilter>({
     search: searchParams.get("search") || "",
@@ -45,27 +47,43 @@ export default function ProductSearch() {
     sortDirection: (searchParams.get("sortDirection") as "asc" | "desc") || "desc",
   })
 
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((searchTerm: string) => {
+      setFilters((prev) => ({ ...prev, search: searchTerm }))
+      applyFilters({ ...filters, search: searchTerm })
+    }, 500),
+    [filters],
+  )
+
   useEffect(() => {
     // Fetch categories, brands, and price range on component mount
     const fetchFilterOptions = async () => {
-      const [categoriesData, brandsData, priceRangeData] = await Promise.all([
-        getProductCategories(),
-        getProductBrands(),
-        getProductPriceRange(),
-      ])
+      setIsLoading(true)
+      try {
+        const [categoriesData, brandsData, priceRangeData] = await Promise.all([
+          getProductCategories(),
+          getProductBrands(),
+          getProductPriceRange(),
+        ])
 
-      setCategories(categoriesData)
-      setBrands(brandsData)
-      setPriceRange([priceRangeData.min, priceRangeData.max])
-      setMaxPriceLimit(priceRangeData.max)
+        setCategories(categoriesData)
+        setBrands(brandsData)
+        setPriceRange([priceRangeData.min, priceRangeData.max])
+        setMaxPriceLimit(priceRangeData.max)
 
-      // Update filters with price range if not already set
-      if (filters.minPrice === undefined && filters.maxPrice === undefined) {
-        setFilters((prev) => ({
-          ...prev,
-          minPrice: priceRangeData.min,
-          maxPrice: priceRangeData.max,
-        }))
+        // Update filters with price range if not already set
+        if (filters.minPrice === undefined && filters.maxPrice === undefined) {
+          setFilters((prev) => ({
+            ...prev,
+            minPrice: priceRangeData.min,
+            maxPrice: priceRangeData.max,
+          }))
+        }
+      } catch (error) {
+        console.error("Error fetching filter options:", error)
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -74,8 +92,13 @@ export default function ProductSearch() {
 
   const handleSearch = () => {
     // Update search in filters
-    const updatedFilters = { ...filters, search }
-    applyFilters(updatedFilters)
+    debouncedSearch(search)
+  }
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearch(value)
+    debouncedSearch(value)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -85,28 +108,36 @@ export default function ProductSearch() {
   }
 
   const applyFilters = (updatedFilters: ProductFilter) => {
-    // Build query string from filters
-    const params = new URLSearchParams()
+    setIsLoading(true)
+    try {
+      // Build query string from filters
+      const params = new URLSearchParams()
 
-    if (updatedFilters.search) params.set("search", updatedFilters.search)
-    if (updatedFilters.category) params.set("category", updatedFilters.category)
-    if (updatedFilters.minPrice !== undefined) params.set("minPrice", updatedFilters.minPrice.toString())
-    if (updatedFilters.maxPrice !== undefined) params.set("maxPrice", updatedFilters.maxPrice.toString())
-    if (updatedFilters.inStock !== undefined) params.set("inStock", updatedFilters.inStock.toString())
-    if (updatedFilters.brands && updatedFilters.brands.length > 0) params.set("brands", updatedFilters.brands.join(","))
-    if (updatedFilters.sortBy) params.set("sortBy", updatedFilters.sortBy)
-    if (updatedFilters.sortDirection) params.set("sortDirection", updatedFilters.sortDirection)
+      if (updatedFilters.search) params.set("search", updatedFilters.search)
+      if (updatedFilters.category) params.set("category", updatedFilters.category)
+      if (updatedFilters.minPrice !== undefined) params.set("minPrice", updatedFilters.minPrice.toString())
+      if (updatedFilters.maxPrice !== undefined) params.set("maxPrice", updatedFilters.maxPrice.toString())
+      if (updatedFilters.inStock !== undefined) params.set("inStock", updatedFilters.inStock.toString())
+      if (updatedFilters.brands && updatedFilters.brands.length > 0)
+        params.set("brands", updatedFilters.brands.join(","))
+      if (updatedFilters.sortBy) params.set("sortBy", updatedFilters.sortBy)
+      if (updatedFilters.sortDirection) params.set("sortDirection", updatedFilters.sortDirection)
 
-    // Navigate to the same page with updated query params
-    router.push(`?${params.toString()}`)
+      // Navigate to the same page with updated query params
+      router.push(`?${params.toString()}`)
 
-    // Update local state
-    setFilters(updatedFilters)
+      // Update local state
+      setFilters(updatedFilters)
+    } catch (error) {
+      console.error("Error applying filters:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const resetFilters = () => {
     setSearch("")
-    setFilters({
+    const defaultFilters = {
       search: "",
       category: "",
       minPrice: priceRange[0],
@@ -115,7 +146,8 @@ export default function ProductSearch() {
       brands: [],
       sortBy: "created_at",
       sortDirection: "desc",
-    })
+    }
+    setFilters(defaultFilters)
 
     // Navigate to the same page without query params
     router.push(window.location.pathname)
@@ -136,6 +168,18 @@ export default function ProductSearch() {
     })
   }
 
+  // Debounced price range handler
+  const handlePriceRangeChange = useCallback(
+    debounce((values: number[]) => {
+      setFilters((prev) => ({
+        ...prev,
+        minPrice: values[0],
+        maxPrice: values[1],
+      }))
+    }, 500),
+    [],
+  )
+
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-col sm:flex-row gap-2">
@@ -144,22 +188,28 @@ export default function ProductSearch() {
             type="text"
             placeholder="Search products..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={handleSearchInputChange}
             onKeyDown={handleKeyDown}
             className="pl-10"
+            aria-label="Search products"
           />
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           {search && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => {
+                setSearch("")
+                setFilters((prev) => ({ ...prev, search: "" }))
+                applyFilters({ ...filters, search: "" })
+              }}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
-        <Button onClick={handleSearch} className="shrink-0">
-          Search
+        <Button onClick={handleSearch} className="shrink-0" disabled={isLoading}>
+          {isLoading ? "Searching..." : "Search"}
         </Button>
         <Sheet>
           <SheetTrigger asChild>
@@ -184,7 +234,7 @@ export default function ProductSearch() {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="">All Categories</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
@@ -202,11 +252,7 @@ export default function ProductSearch() {
                     max={maxPriceLimit}
                     step={1}
                     onValueChange={(values) => {
-                      setFilters((prev) => ({
-                        ...prev,
-                        minPrice: values[0],
-                        maxPrice: values[1],
-                      }))
+                      handlePriceRangeChange(values)
                     }}
                   />
                 </div>
@@ -285,80 +331,17 @@ export default function ProductSearch() {
                 </Select>
               </div>
             </div>
-            <SheetFooter className="flex justify-between sm:justify-between">
-              <Button variant="outline" onClick={resetFilters}>
+            <SheetFooter>
+              <Button type="button" variant="destructive" className="mr-2" onClick={resetFilters}>
                 Reset Filters
               </Button>
               <SheetClose asChild>
-                <Button onClick={() => applyFilters(filters)}>Apply Filters</Button>
+                <Button type="submit">Apply Filters</Button>
               </SheetClose>
             </SheetFooter>
           </SheetContent>
         </Sheet>
       </div>
-
-      {/* Active filters display */}
-      {(filters.category ||
-        filters.inStock !== undefined ||
-        (filters.brands && filters.brands.length > 0) ||
-        filters.sortBy !== "created_at") && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          <span className="text-gray-500">Active filters:</span>
-
-          {filters.category && (
-            <span className="bg-gray-100 px-2 py-1 rounded-full flex items-center">
-              Category: {filters.category}
-              <button
-                onClick={() => setFilters((prev) => ({ ...prev, category: "" }))}
-                className="ml-1 text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          )}
-
-          {filters.inStock && (
-            <span className="bg-gray-100 px-2 py-1 rounded-full flex items-center">
-              In Stock Only
-              <button
-                onClick={() => setFilters((prev) => ({ ...prev, inStock: undefined }))}
-                className="ml-1 text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          )}
-
-          {filters.brands &&
-            filters.brands.map((brand) => (
-              <span key={brand} className="bg-gray-100 px-2 py-1 rounded-full flex items-center">
-                {brand}
-                <button
-                  onClick={() => handleBrandToggle(brand, false)}
-                  className="ml-1 text-gray-500 hover:text-gray-700"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-
-          {filters.sortBy !== "created_at" && (
-            <span className="bg-gray-100 px-2 py-1 rounded-full flex items-center">
-              Sort: {filters.sortBy} ({filters.sortDirection === "asc" ? "↑" : "↓"})
-              <button
-                onClick={() => setFilters((prev) => ({ ...prev, sortBy: "created_at", sortDirection: "desc" }))}
-                className="ml-1 text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          )}
-
-          <button onClick={resetFilters} className="text-blue-600 hover:text-blue-800 underline">
-            Clear all
-          </button>
-        </div>
-      )}
     </div>
   )
 }

@@ -15,6 +15,7 @@ import {
 } from "./notification-service"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import { useToast } from "@/components/ui/use-toast"
+import DOMPurify from "isomorphic-dompurify"
 
 interface NotificationContextType {
   notifications: Notification[]
@@ -103,27 +104,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     let channel: RealtimeChannel | null = null
 
     // Subscribe to real-time notifications
-    try {
-      channel = subscribeToNotifications(user.id, (newNotification) => {
-        // Add the new notification to the state
-        setNotifications((prev) => [newNotification, ...prev])
+    const setupSubscription = async () => {
+      try {
+        channel = subscribeToNotifications(user.id, (newNotification) => {
+          // Add the new notification to the state
+          setNotifications((prev) => [newNotification, ...prev])
 
-        // Increment unread count
-        setUnreadCount((prev) => prev + 1)
+          // Increment unread count
+          setUnreadCount((prev) => prev + 1)
 
-        // Show a toast notification
-        toast({
-          title: getNotificationTypeTitle(newNotification.type),
-          description: newNotification.message,
-          variant: getNotificationVariant(newNotification.priority),
+          // Show a toast notification
+          toast({
+            title: getNotificationTypeTitle(newNotification.type),
+            description: DOMPurify.sanitize(newNotification.message),
+            variant: getNotificationVariant(newNotification.priority),
+          })
         })
-      })
 
-      setRealtimeChannel(channel)
-    } catch (err) {
-      console.error("Error setting up notification subscription:", err)
-      setError(err instanceof Error ? err : new Error(String(err)))
+        setRealtimeChannel(channel)
+      } catch (err) {
+        console.error("Error setting up notification subscription:", err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+      }
     }
+
+    setupSubscription()
 
     // Clean up subscription on unmount or when user changes
     return () => {

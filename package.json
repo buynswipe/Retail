@@ -67,7 +67,9 @@
     "child_process": "latest",
     "isomorphic-dompurify": "latest",
     "papaparse": "latest",
-    "jspdf-autotable": "latest"
+    "jspdf-autotable": "latest",
+    "crypto": "latest",
+    "dotenv": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

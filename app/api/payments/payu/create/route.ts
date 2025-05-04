@@ -1,59 +1,64 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase-client"
-import { errorHandler } from "@/lib/error-handler"
 import crypto from "crypto"
 
-export async function POST(req: NextRequest) {
+async function generatePaymentParams(
+  orderId: string,
+  amount: number,
+  productInfo: string,
+  firstName: string,
+  email: string,
+  phone: string,
+  baseUrl: string,
+) {
+  const merchantKey = process.env.PAYU_MERCHANT_KEY
+  const merchantSalt = process.env.PAYU_MERCHANT_SALT
+
+  if (!merchantKey || !merchantSalt) {
+    throw new Error("Payment gateway configuration is missing")
+  }
+
+  const txnId = `PAYU_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+
+  const payuPayload = {
+    key: merchantKey,
+    txnid: txnId,
+    amount: amount.toString(),
+    productinfo: productInfo,
+    firstname: firstName,
+    email: email,
+    phone: phone,
+    surl: `${baseUrl}/api/payments/payu/success`,
+    furl: `${baseUrl}/api/payments/payu/failure`,
+    udf1: orderId,
+  }
+
+  const hashString = `${merchantKey}|${txnId}|${amount}|${payuPayload.productinfo}|${payuPayload.firstname}|${payuPayload.email}|${payuPayload.udf1}||||||||||${merchantSalt}`
+  const hash = crypto.createHash("sha512").update(hashString).digest("hex")
+
+  payuPayload.hash = hash
+
+  return { payuPayload, txnId, hash }
+}
+
+export async function POST(request: Request) {
   try {
-    const body = await req.json()
-    const { orderId, amount, currency = "INR", metadata = {} } = body
+    const { orderId, amount, productInfo, firstName, email, phone } = await request.json()
 
-    // Validate request
-    if (!orderId || !amount) {
-      return NextResponse.json({ error: "Missing required parameters" }, { status: 400 })
+    // Validate required fields
+    if (!orderId || !amount || !productInfo || !firstName || !email || !phone) {
+      return Response.json({ success: false, error: "Missing required parameters" }, { status: 400 })
     }
 
-    // Get order details
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("*, retailer:retailer_id(*)")
-      .eq("id", orderId)
-      .single()
+    // Get the base URL from the request headers
+    const host = request.headers.get("host") || "localhost:3000"
+    const protocol = host.includes("localhost") ? "http" : "https"
+    const baseUrl = `${protocol}://${host}`
 
-    if (orderError || !order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 })
-    }
+    // Generate payment parameters including hash
+    const paymentParams = await generatePaymentParams(orderId, amount, productInfo, firstName, email, phone, baseUrl)
 
-    // Get PayU configuration
-    const merchantKey = process.env.PAYU_MERCHANT_KEY
-    const merchantSalt = process.env.PAYU_MERCHANT_SALT
-
-    if (!merchantKey || !merchantSalt) {
-      return NextResponse.json({ error: "Payment gateway configuration is missing" }, { status: 500 })
-    }
-
-    // Generate transaction ID
-    const txnId = `PAYU_${Date.now()}_${Math.floor(Math.random() * 1000)}`
-
-    // Prepare PayU request payload
-    const payuPayload = {
-      key: merchantKey,
-      txnid: txnId,
-      amount: amount.toString(),
-      productinfo: `Order #${order.order_number}`,
-      firstname: order.retailer?.name || "Customer",
-      email: order.retailer?.email || "customer@example.com",
-      phone: order.retailer?.phone_number || "",
-      surl: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/payu/success`,
-      furl: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/payu/failure`,
-      udf1: orderId, // Store order ID for reference
-    }
-
-    // Generate hash for PayU
-    const hashString = `${merchantKey}|${txnId}|${amount}|${payuPayload.productinfo}|${payuPayload.firstname}|${payuPayload.email}|${payuPayload.udf1}||||||||||${merchantSalt}`
-    const hash = crypto.createHash("sha512").update(hashString).digest("hex")
-
-    payuPayload.hash = hash
+    const { payuPayload, txnId, hash } = paymentParams
 
     // Create a payment record in our database
     const { data: payment, error: paymentError } = await supabase
@@ -74,17 +79,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create payment record" }, { status: 500 })
     }
 
-    // Return PayU payment details
-    return NextResponse.json({
+    return Response.json({
       success: true,
       id: payment.id,
       txnid: txnId,
       amount: amount,
       hash: hash,
       payuPayload,
-      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/payu/redirect?txnid=${txnId}`,
+      redirectUrl: `${baseUrl}/api/payments/payu/redirect?txnid=${txnId}`,
     })
   } catch (error) {
-    return errorHandler(error, "Failed to initialize PayU payment", { status: 500 })
+    console.error("Error creating PayU payment:", error)
+    return Response.json({ success: false, error: "Failed to create payment" }, { status: 500 })
   }
 }

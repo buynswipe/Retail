@@ -69,3 +69,40 @@ export function generateTransactionId(): string {
   // Generate a unique transaction ID
   return `TXN_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
 }
+
+export function generatePaymentParams(
+  orderId: string,
+  amount: number,
+  productInfo: string,
+  firstName: string,
+  email: string,
+  phone: string,
+  baseUrl: string,
+) {
+  // Ensure baseUrl doesn't end with a slash
+  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl
+
+  const txnid = `${orderId}_${Date.now()}`
+  const params = {
+    key: process.env.PAYU_MERCHANT_KEY!,
+    txnid,
+    amount: amount.toString(),
+    productinfo: productInfo,
+    firstname: firstName,
+    email,
+    phone,
+    surl: `${normalizedBaseUrl}/api/payments/payu/success`,
+    furl: `${normalizedBaseUrl}/api/payments/payu/failure`,
+    curl: `${normalizedBaseUrl}/api/payments/payu/cancel`,
+    service_provider: "payu_paisa",
+  }
+
+  // Generate hash
+  const hashString = `${process.env.PAYU_MERCHANT_KEY}|${txnid}|${amount}|${productInfo}|${firstName}|${email}|||||||||||${process.env.PAYU_MERCHANT_SALT}`
+  const hash = crypto.createHash("sha512").update(hashString).digest("hex")
+
+  return {
+    ...params,
+    hash,
+  }
+}

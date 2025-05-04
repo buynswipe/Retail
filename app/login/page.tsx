@@ -36,7 +36,8 @@ function LoginForm() {
     // Get callback URL from query parameters
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search)
-      setCallbackUrl(urlParams.get("callbackUrl"))
+      const encodedCallbackUrl = urlParams.get("callbackUrl")
+      setCallbackUrl(encodedCallbackUrl ? decodeURIComponent(encodedCallbackUrl) : null)
     }
   }, [])
 
@@ -172,10 +173,6 @@ function LoginForm() {
 
       // Set a cookie to maintain the session across page refreshes
       document.cookie = `userRole=${role}; path=/; max-age=86400;`
-
-      // Get the callback URL from the query parameters or use the default dashboard path
-      const urlParams = new URLSearchParams(window.location.search)
-      const callbackUrl = urlParams.get("callbackUrl")
 
       // Redirect based on callback or role
       if (callbackUrl) {

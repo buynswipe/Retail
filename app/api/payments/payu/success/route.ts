@@ -1,42 +1,111 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { verifyPayUCallback } from "@/lib/payment-service"
+import { verifyPayuHash } from "@/lib/payu"
+import { updateOrderPaymentStatus } from "@/lib/order"
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
-
-    // Convert FormData to a regular object
     const params: Record<string, string> = {}
+
+    // Convert FormData to a plain object
     formData.forEach((value, key) => {
       params[key] = value.toString()
     })
 
-    // Verify the payment
-    const result = await verifyPayUCallback(params)
+    const { txnid, status, mihpayid, amount, productinfo, firstname, email } = params
 
-    // Redirect to the payment status page with appropriate parameters
-    const redirectUrl = new URL("/retailer/payment-status", request.url)
+    // Extract order ID from txnid (assuming format: orderId_timestamp)
+    const orderId = txnid.split("_")[0]
 
-    // Add all parameters to the URL
-    Object.entries(params).forEach(([key, value]) => {
-      redirectUrl.searchParams.append(key, value)
-    })
+    // Verify the hash
+    const isValid = verifyPayuHash(params, process.env.PAYU_MERCHANT_SALT!)
 
-    // Add our verification result
-    redirectUrl.searchParams.append("verified", result.success.toString())
-    if (result.error) {
-      redirectUrl.searchParams.append("error", result.error)
+    if (!isValid) {
+      console.error("Invalid PayU hash in success callback")
+      return NextResponse.redirect(
+        new URL(`/retailer/payment-failure?orderId=${orderId}&reason=invalid_hash`, request.url),
+      )
     }
 
-    return NextResponse.redirect(redirectUrl)
+    if (status === "success") {
+      // Update order payment status
+      await updateOrderPaymentStatus(orderId, "completed", mihpayid, {
+        gateway: "payu",
+        amount,
+        productinfo,
+        firstname,
+        email,
+        txnid,
+        mihpayid,
+        status,
+      })
+
+      // Redirect to success page
+      return NextResponse.redirect(
+        new URL(`/retailer/payment-success?orderId=${orderId}&txnId=${mihpayid}`, request.url),
+      )
+    } else {
+      // Update order payment status to failed
+      await updateOrderPaymentStatus(orderId, "failed", mihpayid, {
+        gateway: "payu",
+        amount,
+        productinfo,
+        firstname,
+        email,
+        txnid,
+        mihpayid,
+        status,
+      })
+
+      // Redirect to failure page
+      return NextResponse.redirect(
+        new URL(`/retailer/payment-failure?orderId=${orderId}&reason=payment_failed`, request.url),
+      )
+    }
   } catch (error) {
-    console.error("PayU success callback error:", error)
+    console.error("Error processing PayU success callback:", error)
+    return NextResponse.redirect(new URL("/retailer/payment-failure?reason=server_error", request.url))
+  }
+}
 
-    // Redirect to payment status page with error
-    const redirectUrl = new URL("/retailer/payment-status", request.url)
-    redirectUrl.searchParams.append("status", "failure")
-    redirectUrl.searchParams.append("error", error instanceof Error ? error.message : "Unknown error")
+export async function GET(request: NextRequest) {
+  // Handle GET requests (redirects from PayU)
+  const searchParams = request.nextUrl.searchParams
+  const params: Record<string, string> = {}
 
-    return NextResponse.redirect(redirectUrl)
+  // Convert search params to a plain object
+  searchParams.forEach((value, key) => {
+    params[key] = value
+  })
+
+  const { txnid, status, mihpayid } = params
+
+  // Extract order ID from txnid
+  const orderId = txnid?.split("_")[0] || "unknown"
+
+  if (status === "success") {
+    // Verify the hash
+    const isValid = verifyPayuHash(params, process.env.PAYU_MERCHANT_SALT!)
+
+    if (!isValid) {
+      console.error("Invalid PayU hash in success GET callback")
+      return NextResponse.redirect(
+        new URL(`/retailer/payment-failure?orderId=${orderId}&reason=invalid_hash`, request.url),
+      )
+    }
+
+    // Update order payment status
+    await updateOrderPaymentStatus(orderId, "completed", mihpayid, params)
+
+    // Redirect to success page
+    return NextResponse.redirect(new URL(`/retailer/payment-success?orderId=${orderId}&txnId=${mihpayid}`, request.url))
+  } else {
+    // Update order payment status to failed
+    await updateOrderPaymentStatus(orderId, "failed", mihpayid, params)
+
+    // Redirect to failure page
+    return NextResponse.redirect(
+      new URL(`/retailer/payment-failure?orderId=${orderId}&reason=payment_failed`, request.url),
+    )
   }
 }

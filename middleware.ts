@@ -48,7 +48,7 @@ function getResponse(request: NextRequest): NextResponse {
       if (!userRole) {
         const url = request.nextUrl.clone()
         url.pathname = "/login"
-        url.searchParams.set("callbackUrl", pathname)
+        url.searchParams.set("callbackUrl", encodeURIComponent(pathname))
         return NextResponse.redirect(url)
       }
 
@@ -73,7 +73,7 @@ function getResponse(request: NextRequest): NextResponse {
   if (COMMON_AUTH_PATHS.includes(pathname) && !userRole) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
-    url.searchParams.set("callbackUrl", pathname)
+    url.searchParams.set("callbackUrl", encodeURIComponent(pathname))
     return NextResponse.redirect(url)
   }
 

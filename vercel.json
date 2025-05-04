@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install --no-fund --no-audit --force",
+  "buildCommand": "yarn build",
+  "devCommand": "yarn dev",
+  "installCommand": "yarn install --frozen-lockfile",
   "framework": "nextjs",
   "regions": ["iad1"],
   "public": false,

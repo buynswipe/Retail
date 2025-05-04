@@ -1,77 +1,61 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyPayuHash } from "@/lib/payu"
 import { updateOrderPaymentStatus } from "@/lib/order"
+import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
+    // Get form data from the request
     const formData = await request.formData()
-    const params: Record<string, string> = {}
 
-    // Convert FormData to a plain object
+    // Convert FormData to a regular object
+    const params: Record<string, string> = {}
     formData.forEach((value, key) => {
       params[key] = value.toString()
     })
 
-    const { txnid, status, mihpayid, error_Message, amount, productinfo, firstname, email } = params
+    // Extract necessary parameters
+    const { txnid, status, amount, udf1: orderId, error_Message } = params
 
-    // Extract order ID from txnid (assuming format: orderId_timestamp)
-    const orderId = txnid.split("_")[0]
-
-    // Verify the hash
-    const isValid = verifyPayuHash(params, process.env.PAYU_MERCHANT_SALT!)
+    // Verify the hash to ensure the response is authentic
+    const isValid = verifyPayuHash(params)
 
     if (!isValid) {
-      console.error("Invalid PayU hash in failure callback")
-      return NextResponse.redirect(
-        new URL(`/retailer/payment-failure?orderId=${orderId}&reason=invalid_hash`, request.url),
-      )
+      console.error("Invalid hash in PayU failure callback")
+      return NextResponse.redirect(new URL("/retailer/payment-failure?reason=invalid_hash", request.url))
     }
 
-    // Update order payment status to failed
-    await updateOrderPaymentStatus(orderId, "failed", mihpayid, {
-      gateway: "payu",
-      amount,
-      productinfo,
-      firstname,
-      email,
-      txnid,
-      mihpayid,
-      status,
-      error_Message,
-    })
+    // Verify transaction ID from cookies
+    const storedTxnId = cookies().get("payu_txn")?.value
 
-    // Redirect to failure page with error message
-    const errorReason = encodeURIComponent(error_Message || "Payment failed")
+    if (storedTxnId && storedTxnId !== txnid) {
+      console.error("Transaction ID mismatch in PayU failure callback")
+      return NextResponse.redirect(new URL("/retailer/payment-failure?reason=txn_mismatch", request.url))
+    }
+
+    // Clear the transaction cookie
+    cookies().delete("payu_txn")
+
+    // Update payment status in database
+    if (orderId) {
+      await updateOrderPaymentStatus(orderId, "failed", {
+        transactionId: txnid,
+        amount: Number.parseFloat(amount),
+        paymentMethod: "payu",
+        failureReason: error_Message || status,
+        paymentDetails: params,
+      })
+    }
+
+    // Redirect to failure page
     return NextResponse.redirect(
-      new URL(`/retailer/payment-failure?orderId=${orderId}&reason=${errorReason}`, request.url),
+      new URL(
+        `/retailer/payment-failure?orderId=${orderId}&reason=${encodeURIComponent(error_Message || "Payment failed")}`,
+        request.url,
+      ),
     )
   } catch (error) {
     console.error("Error processing PayU failure callback:", error)
     return NextResponse.redirect(new URL("/retailer/payment-failure?reason=server_error", request.url))
   }
-}
-
-export async function GET(request: NextRequest) {
-  // Handle GET requests (redirects from PayU)
-  const searchParams = request.nextUrl.searchParams
-  const params: Record<string, string> = {}
-
-  // Convert search params to a plain object
-  searchParams.forEach((value, key) => {
-    params[key] = value
-  })
-
-  const { txnid, status, mihpayid, error_Message } = params
-
-  // Extract order ID from txnid
-  const orderId = txnid?.split("_")[0] || "unknown"
-
-  // Update order payment status to failed
-  await updateOrderPaymentStatus(orderId, "failed", mihpayid, params)
-
-  // Redirect to failure page with error message
-  const errorReason = encodeURIComponent(error_Message || "Payment failed")
-  return NextResponse.redirect(
-    new URL(`/retailer/payment-failure?orderId=${orderId}&reason=${errorReason}`, request.url),
-  )
 }

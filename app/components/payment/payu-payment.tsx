@@ -3,73 +3,69 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { useToast } from "@/hooks/use-toast"
 import { Loader2 } from "lucide-react"
+import { initializePayuPayment } from "@/app/actions/payment-actions"
+import { useToast } from "@/hooks/use-toast"
 
 interface PayUPaymentProps {
   orderId: string
   amount: number
-  customerName: string
-  customerEmail: string
-  customerPhone: string
-  onSuccess: (paymentId: string) => void
-  onFailure: (error: string) => void
-  order: { id: string; total_amount: number }
-  user: { name?: string; email?: string; phone_number?: string } | null | undefined
+  productInfo: string
+  firstName: string
+  email: string
+  phone: string
+  onPaymentStart?: () => void
+  onPaymentCancel?: () => void
 }
 
 export function PayUPayment({
   orderId,
   amount,
-  customerName,
-  customerEmail,
-  customerPhone,
-  onSuccess,
-  onFailure,
-  order,
-  user,
+  productInfo,
+  firstName,
+  email,
+  phone,
+  onPaymentStart,
+  onPaymentCancel,
 }: PayUPaymentProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const initiatePayment = async () => {
-    setIsLoading(true)
-    setError("")
-
+  const handlePayNow = async () => {
     try {
-      // Get the base URL
-      const baseUrl = window.location.origin
+      setIsLoading(true)
+      setError(null)
 
-      // Create payment request
-      const response = await fetch("/api/payments/payu/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderId: order.id,
-          amount: order.total_amount,
-          productInfo: `Order #${order.id}`,
-          firstName: user?.name || "Customer",
-          email: user?.email || `${user?.phone_number}@example.com`,
-          phone: user?.phone_number || "",
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || "Failed to create payment")
+      if (onPaymentStart) {
+        onPaymentStart()
       }
 
-      // Create and submit form
+      // Create form data for the server action
+      const formData = new FormData()
+      formData.append("orderId", orderId)
+      formData.append("amount", amount.toString())
+      formData.append("productInfo", productInfo)
+      formData.append("firstName", firstName)
+      formData.append("email", email)
+      formData.append("phone", phone)
+      formData.append("origin", window.location.origin)
+
+      // Call the server action to initialize payment
+      const result = await initializePayuPayment(formData)
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to initialize payment")
+      }
+
+      // Create a form and submit it
       const form = document.createElement("form")
       form.method = "POST"
-      form.action = "https://secure.payu.in/_payment" // PayU production URL
+      form.action = result.paymentUrl
+      form.style.display = "none"
 
-      // Add all parameters as hidden fields
-      Object.entries(data.paymentParams).forEach(([key, value]) => {
+      // Add all fields to the form
+      Object.entries(result.paymentData).forEach(([key, value]) => {
         const input = document.createElement("input")
         input.type = "hidden"
         input.name = key
@@ -77,13 +73,24 @@ export function PayUPayment({
         form.appendChild(input)
       })
 
-      // Add form to body and submit
+      // Add the form to the body and submit it
       document.body.appendChild(form)
       form.submit()
-    } catch (error) {
-      console.error("Payment initiation error:", error)
-      setError("Failed to initiate payment. Please try again.")
+    } catch (err) {
       setIsLoading(false)
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred"
+      setError(errorMessage)
+      toast({
+        title: "Payment Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancel = () => {
+    if (onPaymentCancel) {
+      onPaymentCancel()
     }
   }
 
@@ -95,20 +102,24 @@ export function PayUPayment({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm font-medium">Order ID</p>
-              <p className="text-sm text-gray-500">{orderId}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Amount</p>
-              <p className="text-sm text-gray-500">₹{amount.toFixed(2)}</p>
-            </div>
+          <div className="flex justify-between">
+            <span>Order ID:</span>
+            <span className="font-medium">{orderId}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Amount:</span>
+            <span className="font-medium">₹{amount.toFixed(2)}</span>
           </div>
         </div>
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">{error}</div>
+        )}
       </CardContent>
-      <CardFooter>
-        <Button onClick={initiatePayment} disabled={isLoading} className="w-full">
+      <CardFooter className="flex justify-between">
+        <Button variant="outline" onClick={handleCancel}>
+          Cancel
+        </Button>
+        <Button onClick={handlePayNow} disabled={isLoading}>
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -118,7 +129,6 @@ export function PayUPayment({
             "Pay Now"
           )}
         </Button>
-        {error && <p className="text-red-500 mt-2">{error}</p>}
       </CardFooter>
     </Card>
   )

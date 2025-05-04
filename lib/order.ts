@@ -1,21 +1,23 @@
-import { supabase } from "./supabase-client"
-import type { PaymentStatus } from "./types"
+import { createClient } from "./supabase-client"
+
+// Define PaymentStatus type if not already defined in types.ts
+export type PaymentStatus = "pending" | "completed" | "failed" | "refunded" | "cancelled"
 
 /**
  * Updates the payment status of an order
  * @param orderId The ID of the order to update
  * @param paymentStatus The new payment status
- * @param transactionId Optional transaction ID from the payment gateway
  * @param paymentDetails Optional additional payment details
  * @returns Object with success status and error if any
  */
 export async function updateOrderPaymentStatus(
   orderId: string,
   paymentStatus: PaymentStatus,
-  transactionId?: string,
   paymentDetails?: Record<string, any>,
 ): Promise<{ success: boolean; error: any }> {
   try {
+    const supabase = createClient()
+
     // Handle demo order IDs
     if (orderId.startsWith("demo-")) {
       console.log(`Demo order payment status update: ${orderId} -> ${paymentStatus}`)
@@ -27,10 +29,12 @@ export async function updateOrderPaymentStatus(
       updated_at: new Date().toISOString(),
     }
 
-    if (transactionId) {
-      updateData.transaction_id = transactionId
+    // Extract transaction ID from payment details if available
+    if (paymentDetails?.mihpayid) {
+      updateData.transaction_id = paymentDetails.mihpayid
     }
 
+    // Store payment details as JSON
     if (paymentDetails) {
       updateData.payment_details = paymentDetails
     }
@@ -48,7 +52,7 @@ export async function updateOrderPaymentStatus(
     }
 
     // Log the payment status update
-    await logPaymentStatusUpdate(orderId, paymentStatus, transactionId, paymentDetails)
+    await logPaymentStatusUpdate(orderId, paymentStatus, paymentDetails)
 
     return { success: true, error: null }
   } catch (error) {
@@ -61,20 +65,20 @@ export async function updateOrderPaymentStatus(
  * Logs a payment status update to the payment_logs table
  * @param orderId The ID of the order
  * @param paymentStatus The payment status
- * @param transactionId Optional transaction ID
  * @param paymentDetails Optional payment details
  */
 async function logPaymentStatusUpdate(
   orderId: string,
   paymentStatus: PaymentStatus,
-  transactionId?: string,
   paymentDetails?: Record<string, any>,
 ): Promise<void> {
   try {
+    const supabase = createClient()
+
     await supabase.from("payment_logs").insert({
       order_id: orderId,
       payment_status: paymentStatus,
-      transaction_id: transactionId,
+      transaction_id: paymentDetails?.mihpayid || paymentDetails?.transaction_id,
       payment_details: paymentDetails,
       created_at: new Date().toISOString(),
     })
@@ -92,6 +96,8 @@ export async function getOrderPaymentStatus(
   orderId: string,
 ): Promise<{ paymentStatus: PaymentStatus; transactionId?: string; error: any }> {
   try {
+    const supabase = createClient()
+
     // Handle demo order IDs
     if (orderId.startsWith("demo-")) {
       return { paymentStatus: "pending", transactionId: undefined, error: null }

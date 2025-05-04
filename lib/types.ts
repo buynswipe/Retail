@@ -221,3 +221,36 @@ export interface OfflineData {
   data: any
   timestamp: number
 }
+
+// Add PaymentStatus type if not already defined
+export type PaymentStatusType = "pending" | "completed" | "failed" | "refunded" | "cancelled"
+
+// Add PaymentGateway type if not already defined
+export type PaymentGateway = "payu" | "paytm" | "phonepe" | "razorpay" | "cod"
+
+// Add PaymentMethod type if not already defined
+export type PaymentMethodType = "card" | "netbanking" | "upi" | "wallet" | "emi" | "cod"
+
+// Add PaymentDetails interface if not already defined
+export interface PaymentDetails {
+  gateway: PaymentGateway
+  method?: PaymentMethodType
+  transaction_id?: string
+  amount: number
+  status: string
+  error_message?: string
+  raw_response?: any
+}
+
+// Add Order interface if not already defined
+
+export interface OrderItem {
+  product_id: string
+  quantity: number
+  price: number
+  name: string
+  variant?: string
+}
+
+// Add OrderStatus type if not already defined
+export type OrderStatusType = "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled"

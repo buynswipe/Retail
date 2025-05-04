@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  swcMinify: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -8,11 +9,11 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['localhost'],
+    domains: ['localhost', 'v0-retail-bandhu-v3.vercel.app'],
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**.vercel-storage.com',
+        hostname: '**',
       },
     ],
     minimumCacheTTL: 60,
@@ -36,6 +37,7 @@ const nextConfig = {
         'node_modules/@esbuild/linux-x64',
       ],
     },
+    serverActions: true,
   },
   // Add custom headers for security and caching
   async headers() {

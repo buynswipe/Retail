@@ -2,9 +2,9 @@
   "version": 2,
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install --no-fund --no-audit",
+  "installCommand": "npm install --no-fund --no-audit --force",
   "framework": "nextjs",
-  "regions": ["bom1"],
+  "regions": ["iad1"],
   "public": false,
   "cleanUrls": true,
   "headers": [
@@ -30,7 +30,6 @@
     }
   ],
   "github": {
-    "silent": true,
-    "autoJobCancelation": true
+    "silent": true
   }
 }

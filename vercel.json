@@ -7,7 +7,6 @@
   "regions": ["bom1"],
   "public": false,
   "cleanUrls": true,
-  "nodeVersion": "18.x",
   "headers": [
     {
       "source": "/api/(.*)",

@@ -25,10 +25,11 @@ export async function POST(request: Request) {
     } = body
 
     // Verify the hash to ensure the response is from PayU
+    // Fixed hash calculation - PayU uses salt|status|...|key format for response verification
     const calculatedHash = crypto
       .createHash("sha512")
       .update(
-        `${PAYU_MERCHANT_SALT}|${status}|${txnid}|${productinfo}|${amount}|${firstname}|${email}|${udf1}|${mihpayid}|${PAYU_MERCHANT_KEY}`,
+        `${PAYU_MERCHANT_SALT}|${status}|||||${udf1}|${email}|${firstname}|${productinfo}|${amount}|${txnid}|${PAYU_MERCHANT_KEY}`,
       )
       .digest("hex")
 

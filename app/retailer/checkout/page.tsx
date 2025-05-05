@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { TranslationProvider, useTranslation } from "../../components/translation-provider"
 import Navbar from "../../components/navbar"
@@ -15,9 +15,10 @@ import { useAuth } from "@/lib/auth-context"
 import { useCart } from "@/lib/cart-context"
 import { createOrder } from "@/lib/order-service"
 import { createPayment } from "@/lib/payment-service"
-import { ArrowLeft, Package, CreditCard, Banknote, Loader2 } from "lucide-react"
+import { ArrowLeft, Package, CreditCard, Banknote, Loader2, AlertCircle } from "lucide-react"
 import type { PaymentMethod } from "@/lib/types"
 import { PayUPaymentForm } from "../../components/payment/payu-payment-form"
+import { debounce } from "lodash"
 
 function CheckoutContent() {
   const router = useRouter()
@@ -33,6 +34,125 @@ function CheckoutContent() {
   const [payuUrl, setPayuUrl] = useState<string>("")
   const [isRedirecting, setIsRedirecting] = useState(false)
 
+  // 1. Add memoization for expensive calculations
+  const totalWithDelivery = useMemo(() => {
+    return totalAmount + deliveryCharge + deliveryGST
+  }, [totalAmount, deliveryCharge, deliveryGST])
+
+  // 4. Add error boundary for the checkout process
+  const [checkoutError, setCheckoutError] = useState<Error | null>(null)
+
+  // 2. Add debounce for form submissions to prevent accidental double-clicks
+  const debouncedHandlePlaceOrder = useCallback(
+    debounce(async () => {
+      if (!user || !wholesalerId) return
+
+      setIsProcessing(true)
+      try {
+        // Create order items from cart
+        const orderItems = items.map((item) => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          unit_price: item.product.price,
+          total_price: item.product.price * item.quantity,
+        }))
+
+        // Create order
+        const { data: orderData, error: orderError } = await createOrder({
+          retailer_id: user.id,
+          wholesaler_id: wholesalerId,
+          items: orderItems,
+          payment_method: paymentMethod,
+        })
+
+        if (orderError) {
+          throw orderError
+        }
+
+        if (!orderData) {
+          throw new Error("Failed to create order. Please try again.")
+        }
+
+        // Handle PayU payment separately
+        if (paymentMethod === "payu") {
+          const response = await fetch("/api/payments/payu/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: orderData.id,
+              amount: totalWithDelivery,
+              currency: "INR",
+              redirectUrl: `${window.location.origin}/retailer/orders/${orderData.id}`,
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error("Failed to initialize PayU payment")
+          }
+
+          const payuResponse = await response.json()
+
+          if (payuResponse.success) {
+            setPayuData(payuResponse.payuData)
+            setPayuUrl(payuResponse.payuUrl)
+            setIsRedirecting(true)
+            return
+          } else {
+            throw new Error(payuResponse.message || "Payment initialization failed")
+          }
+        } else {
+          // Create payment record for other payment methods
+          const { data: paymentData, error: paymentError } = await createPayment({
+            order_id: orderData.id,
+            amount: totalWithDelivery,
+            payment_method: paymentMethod,
+          })
+
+          if (paymentError) {
+            throw paymentError
+          }
+        }
+
+        // Clear cart after successful order
+        clearCart()
+
+        // Show success message
+        toast({
+          title: "Order Placed Successfully",
+          description: `Your order #${orderData.order_number} has been placed.`,
+        })
+
+        // Redirect to order details page
+        router.push(`/retailer/orders/${orderData.id}`)
+      } catch (error) {
+        console.error("Error placing order:", error)
+        toast({
+          title: "Error",
+          description: "Failed to place order. Please try again.",
+          variant: "destructive",
+        })
+        setIsProcessing(false)
+        setCheckoutError(error instanceof Error ? error : new Error("An unexpected error occurred."))
+      }
+    }, 300),
+    [user, wholesalerId, items, paymentMethod, totalWithDelivery, clearCart, router],
+  )
+
+  // 3. Add loading state optimization
+  useEffect(() => {
+    // Preload the payment gateway page to reduce redirect time
+    if (paymentMethod === "payu") {
+      const link = document.createElement("link")
+      link.rel = "preconnect"
+      link.href = "https://secure.payu.in"
+      document.head.appendChild(link)
+
+      return () => {
+        document.head.removeChild(link)
+      }
+    }
+  }, [paymentMethod])
+
   useEffect(() => {
     // Mark that we're on the client
     setIsClient(true)
@@ -43,95 +163,8 @@ function CheckoutContent() {
     }
   }, [items, wholesalerId, router])
 
-  const handlePlaceOrder = async () => {
-    if (!user || !wholesalerId) return
-
-    setIsProcessing(true)
-    try {
-      // Create order items from cart
-      const orderItems = items.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        unit_price: item.product.price,
-        total_price: item.product.price * item.quantity,
-      }))
-
-      // Create order
-      const { data: orderData, error: orderError } = await createOrder({
-        retailer_id: user.id,
-        wholesaler_id: wholesalerId,
-        items: orderItems,
-        payment_method: paymentMethod,
-      })
-
-      if (orderError) {
-        throw orderError
-      }
-
-      if (!orderData) {
-        throw new Error("Failed to create order. Please try again.")
-      }
-
-      // Handle PayU payment separately
-      if (paymentMethod === "payu") {
-        const response = await fetch("/api/payments/payu/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId: orderData.id,
-            amount: orderData.total_amount,
-            currency: "INR",
-            redirectUrl: `${window.location.origin}/retailer/orders/${orderData.id}`,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error("Failed to initialize PayU payment")
-        }
-
-        const payuResponse = await response.json()
-
-        if (payuResponse.success) {
-          setPayuData(payuResponse.payuData)
-          setPayuUrl(payuResponse.payuUrl)
-          setIsRedirecting(true)
-          return
-        } else {
-          throw new Error(payuResponse.message || "Payment initialization failed")
-        }
-      } else {
-        // Create payment record for other payment methods
-        const { data: paymentData, error: paymentError } = await createPayment({
-          order_id: orderData.id,
-          amount: orderData.total_amount,
-          payment_method: paymentMethod,
-        })
-
-        if (paymentError) {
-          throw paymentError
-        }
-      }
-
-      // Clear cart after successful order
-      clearCart()
-
-      // Show success message
-      toast({
-        title: "Order Placed Successfully",
-        description: `Your order #${orderData.order_number} has been placed.`,
-      })
-
-      // Redirect to order details page
-      router.push(`/retailer/orders/${orderData.id}`)
-    } catch (error) {
-      console.error("Error placing order:", error)
-      toast({
-        title: "Error",
-        description: "Failed to place order. Please try again.",
-        variant: "destructive",
-      })
-      setIsProcessing(false)
-    }
+  const handlePlaceOrder = () => {
+    debouncedHandlePlaceOrder()
   }
 
   // Show loading state during SSR or if cart data is not yet available
@@ -153,6 +186,17 @@ function CheckoutContent() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Browse Products
         </Button>
+      </div>
+    )
+  }
+
+  if (checkoutError) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="h-12 w-12 mx-auto text-red-400 mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Checkout Error</h2>
+        <p className="text-gray-500 mb-6">{checkoutError.message}</p>
+        <Button onClick={() => setCheckoutError(null)}>Try Again</Button>
       </div>
     )
   }
@@ -285,7 +329,7 @@ function CheckoutContent() {
                 <Separator className="my-2" />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>₹{(totalAmount + deliveryCharge + deliveryGST).toFixed(2)}</span>
+                  <span>₹{totalWithDelivery.toFixed(2)}</span>
                 </div>
 
                 <div className="mt-6">

@@ -64,7 +64,8 @@
     "papaparse": "latest",
     "jspdf-autotable": "latest",
     "uuid": "latest",
-    "crypto": "latest"
+    "crypto": "latest",
+    "lodash": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -56,89 +56,102 @@ export async function POST(request: Request) {
       .eq("order_id", orderId)
       .single()
 
-    if (paymentError) {
-      console.error("Error fetching payment:", paymentError)
-      // Create a new payment record if not found
-      const { data: newPayment, error: createError } = await supabase
-        .from("payments")
-        .insert({
-          order_id: orderId,
-          amount: Number.parseFloat(amount),
-          payment_method: mode.toLowerCase(),
-          payment_status: mapPayUStatus(status),
-          transaction_id: mihpayid || txnid,
-          reference_id: bank_ref_num || payuMoneyId,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single()
+    // Add retry logic for database operations
+    const maxRetries = 3
+    let retryCount = 0
+    let success = false
 
-      if (createError) {
-        console.error("Error creating payment record:", createError)
-        return NextResponse.json({ error: "Failed to create payment record" }, { status: 500 })
+    while (!success && retryCount < maxRetries) {
+      try {
+        if (paymentError) {
+          // Create a new payment record if not found
+          const { data: newPayment, error: createError } = await supabase
+            .from("payments")
+            .insert({
+              order_id: orderId,
+              amount: Number.parseFloat(amount),
+              payment_method: mode.toLowerCase(),
+              payment_status: mapPayUStatus(status),
+              transaction_id: mihpayid || txnid,
+              reference_id: bank_ref_num || payuMoneyId,
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (createError) {
+            throw createError
+          }
+
+          // Update order payment status
+          await updateOrderPaymentStatus(orderId, mapPayUStatus(status), mihpayid || txnid)
+
+          // Track payment event
+          await trackPaymentEvent({
+            event_type: mapPayUStatus(status) === "completed" ? "payment_completed" : "payment_failed",
+            user_id: order.retailer_id,
+            order_id: orderId,
+            payment_id: newPayment.id,
+            payment_method: mode.toLowerCase(),
+            amount: Number.parseFloat(amount),
+            gateway: "payu",
+            metadata: {
+              status,
+              mihpayid,
+              txnid,
+              bank_ref_num,
+              reason: error_Message || null,
+            },
+          })
+        } else {
+          // Update existing payment record
+          const { error: updateError } = await supabase
+            .from("payments")
+            .update({
+              payment_status: mapPayUStatus(status),
+              transaction_id: mihpayid || txnid,
+              reference_id: bank_ref_num || payuMoneyId || payment.reference_id,
+              payment_date: status === "success" ? new Date().toISOString() : null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", payment.id)
+
+          if (updateError) {
+            throw updateError
+          }
+
+          // Update order payment status
+          await updateOrderPaymentStatus(orderId, mapPayUStatus(status), mihpayid || txnid)
+
+          // Track payment event
+          await trackPaymentEvent({
+            event_type: mapPayUStatus(status) === "completed" ? "payment_completed" : "payment_failed",
+            user_id: order.retailer_id,
+            order_id: orderId,
+            payment_id: payment.id,
+            payment_method: mode.toLowerCase(),
+            amount: Number.parseFloat(amount),
+            gateway: "payu",
+            metadata: {
+              status,
+              mihpayid,
+              txnid,
+              bank_ref_num,
+              reason: error_Message || null,
+            },
+          })
+        }
+
+        success = true
+      } catch (error) {
+        retryCount++
+        if (retryCount >= maxRetries) {
+          throw error
+        }
+        // Exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, retryCount)))
       }
-
-      // Update order payment status
-      await updateOrderPaymentStatus(orderId, mapPayUStatus(status), mihpayid || txnid)
-
-      // Track payment event
-      await trackPaymentEvent({
-        event_type: mapPayUStatus(status) === "completed" ? "payment_completed" : "payment_failed",
-        user_id: order.retailer_id,
-        order_id: orderId,
-        payment_id: newPayment.id,
-        payment_method: mode.toLowerCase(),
-        amount: Number.parseFloat(amount),
-        gateway: "payu",
-        metadata: {
-          status,
-          mihpayid,
-          txnid,
-          bank_ref_num,
-          reason: error_Message || null,
-        },
-      })
-
-      return NextResponse.json({ success: true, status: "Payment record created" })
     }
-
-    // Update existing payment record
-    const { error: updateError } = await supabase
-      .from("payments")
-      .update({
-        payment_status: mapPayUStatus(status),
-        transaction_id: mihpayid || txnid,
-        reference_id: bank_ref_num || payuMoneyId || payment.reference_id,
-        payment_date: status === "success" ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", payment.id)
-
-    if (updateError) {
-      console.error("Error updating payment record:", updateError)
-      return NextResponse.json({ error: "Failed to update payment record" }, { status: 500 })
-    }
-
-    // Update order payment status
-    await updateOrderPaymentStatus(orderId, mapPayUStatus(status), mihpayid || txnid)
-
-    // Track payment event
-    await trackPaymentEvent({
-      event_type: mapPayUStatus(status) === "completed" ? "payment_completed" : "payment_failed",
-      user_id: order.retailer_id,
-      order_id: orderId,
-      payment_id: payment.id,
-      payment_method: mode.toLowerCase(),
-      amount: Number.parseFloat(amount),
-      gateway: "payu",
-      metadata: {
-        status,
-        mihpayid,
-        txnid,
-        bank_ref_num,
-        reason: error_Message || null,
-      },
-    })
 
     return NextResponse.json({ success: true, status: "Payment record updated" })
   } catch (error) {

@@ -145,6 +145,36 @@ export async function getPaymentStatistics(
   }
 }
 
+/**
+ * Retry a function with exponential backoff
+ * @param fn Function to retry
+ * @param maxRetries Maximum number of retries
+ * @returns Result of the function
+ */
+async function retryOperation<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let retryCount = 0
+  let lastError: any
+
+  while (retryCount < maxRetries) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      retryCount++
+
+      if (retryCount >= maxRetries) {
+        break
+      }
+
+      // Exponential backoff with jitter
+      const delay = Math.min(1000 * Math.pow(2, retryCount) + Math.random() * 1000, 10000)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError
+}
+
 // Update payment status
 export async function updatePaymentStatus(
   orderId: string,
@@ -155,72 +185,78 @@ export async function updatePaymentStatus(
     metadata?: any
   },
 ) {
-  try {
-    // Get the payment record
-    const { data: payment, error: paymentError } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("order_id", orderId)
-      .single()
+  return retryOperation(async () => {
+    try {
+      // Get the payment record
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("order_id", orderId)
+        .single()
 
-    if (paymentError) {
-      throw paymentError
-    }
+      if (paymentError) {
+        throw paymentError
+      }
 
-    // Update payment record
-    const { error: updateError } = await supabase
-      .from("payments")
-      .update({
-        payment_status: status,
-        transaction_id: paymentDetails?.paymentId || payment.transaction_id,
-        reference_id: paymentDetails?.gatewayReference || payment.reference_id,
-        payment_date: status === "completed" ? new Date().toISOString() : payment.payment_date,
-        updated_at: new Date().toISOString(),
-        metadata: paymentDetails?.metadata || payment.metadata,
+      // Update payment record
+      const { error: updateError } = await supabase
+        .from("payments")
+        .update({
+          payment_status: status,
+          transaction_id: paymentDetails?.paymentId || payment.transaction_id,
+          reference_id: paymentDetails?.gatewayReference || payment.reference_id,
+          payment_date: status === "completed" ? new Date().toISOString() : payment.payment_date,
+          updated_at: new Date().toISOString(),
+          metadata: paymentDetails?.metadata || payment.metadata,
+        })
+        .eq("id", payment.id)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      // Update order payment status
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          payment_status: status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId)
+
+      if (orderError) {
+        throw orderError
+      }
+
+      // Get order details for tracking
+      const { data: order, error: orderFetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single()
+
+      if (orderFetchError) {
+        throw orderFetchError
+      }
+
+      // Track payment event
+      await trackPaymentEvent({
+        event_type:
+          status === "completed" ? "payment_completed" : status === "failed" ? "payment_failed" : "payment_initiated",
+        user_id: order.retailer_id,
+        order_id: orderId,
+        payment_id: payment.id,
+        payment_method: payment.payment_method,
+        amount: payment.amount,
+        gateway: "payu", // Default to PayU for now
+        metadata: paymentDetails?.metadata,
       })
-      .eq("id", payment.id)
 
-    if (updateError) {
-      throw updateError
+      return { success: true, error: null }
+    } catch (error) {
+      return errorHandler(error, "Error updating payment status", { success: false, error })
     }
-
-    // Update order payment status
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({
-        payment_status: status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-
-    if (orderError) {
-      throw orderError
-    }
-
-    // Get order details for tracking
-    const { data: order, error: orderFetchError } = await supabase.from("orders").select("*").eq("id", orderId).single()
-
-    if (orderFetchError) {
-      throw orderFetchError
-    }
-
-    // Track payment event
-    await trackPaymentEvent({
-      event_type:
-        status === "completed" ? "payment_completed" : status === "failed" ? "payment_failed" : "payment_initiated",
-      user_id: order.retailer_id,
-      order_id: orderId,
-      payment_id: payment.id,
-      payment_method: payment.payment_method,
-      amount: payment.amount,
-      gateway: "payu", // Default to PayU for now
-      metadata: paymentDetails?.metadata,
-    })
-
-    return { success: true, error: null }
-  } catch (error) {
-    return errorHandler(error, "Error updating payment status", { success: false, error })
-  }
+  })
 }
 
 // Create PayU payment

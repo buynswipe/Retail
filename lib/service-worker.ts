@@ -141,3 +141,74 @@ export async function requestBackgroundSync(tag = "sync-pending-operations"): Pr
     return false
   }
 }
+
+/**
+ * Check if the network is available by making a lightweight request
+ * @returns Promise<boolean> True if network is available
+ */
+export async function checkNetworkAvailability(): Promise<boolean> {
+  try {
+    // Make a HEAD request to a reliable endpoint
+    const response = await fetch("/api/health-check", {
+      method: "HEAD",
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    })
+    return response.ok
+  } catch (error) {
+    console.warn("Network check failed:", error)
+    return false
+  }
+}
+
+/**
+ * Enhanced online status checker that combines navigator.onLine with an actual network request
+ * @returns Promise<boolean> True if the device is online and can reach the server
+ */
+export async function isOnlineEnhanced(): Promise<boolean> {
+  // First check the browser's navigator.onLine property
+  if (!navigator.onLine) {
+    return false
+  }
+
+  // Then verify with an actual network request
+  return await checkNetworkAvailability()
+}
+
+/**
+ * Register for online/offline events with enhanced detection
+ * @param onOnline Callback for when the device comes online
+ * @param onOffline Callback for when the device goes offline
+ */
+export function registerConnectivityListeners(onOnline: () => void, onOffline: () => void): () => void {
+  let isCurrentlyOnline = navigator.onLine
+
+  // Check actual connectivity periodically
+  const intervalId = setInterval(async () => {
+    const actuallyOnline = await isOnlineEnhanced()
+
+    // If there's a change in status
+    if (actuallyOnline !== isCurrentlyOnline) {
+      isCurrentlyOnline = actuallyOnline
+      if (actuallyOnline) {
+        onOnline()
+      } else {
+        onOffline()
+      }
+    }
+  }, 30000) // Check every 30 seconds
+
+  // Also listen to browser events
+  window.addEventListener("online", onOnline)
+  window.addEventListener("offline", onOffline)
+
+  // Return a cleanup function
+  return () => {
+    clearInterval(intervalId)
+    window.removeEventListener("online", onOnline)
+    window.removeEventListener("offline", onOffline)
+  }
+}

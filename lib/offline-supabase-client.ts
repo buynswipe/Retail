@@ -253,7 +253,13 @@ class OfflineSupabaseClient {
   }
 
   // Sync pending operations with exponential backoff and improved error handling
-  async syncPendingOperations(): Promise<{ success: boolean; synced: number; failed: number; message?: string }> {
+  async syncPendingOperations(): Promise<{
+    success: boolean
+    synced: number
+    failed: number
+    message?: string
+    details?: any[]
+  }> {
     try {
       // Check if we're online
       if (!navigator.onLine) {
@@ -269,6 +275,7 @@ class OfflineSupabaseClient {
 
       let synced = 0
       let failed = 0
+      const failedDetails: any[] = []
 
       // Process operations in order
       for (const operation of pendingOperations) {
@@ -302,6 +309,12 @@ class OfflineSupabaseClient {
           } else {
             // Operation failed
             failed++
+            failedDetails.push({
+              id: operation.id,
+              type: operation.type,
+              data: operation.data,
+              error: "Operation failed",
+            })
 
             // Increment retry count
             const retryCount = (operation.retryCount || 0) + 1
@@ -328,6 +341,11 @@ class OfflineSupabaseClient {
         } catch (error) {
           console.error(`Error processing operation ${operation.id}:`, error)
           failed++
+          failedDetails.push({
+            id: operation.id,
+            type: operation.type,
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
         }
       }
 
@@ -345,10 +363,22 @@ class OfflineSupabaseClient {
         synced,
         failed,
         message: `Synced ${synced} operations, failed ${failed} operations`,
+        details: failed > 0 ? failedDetails : undefined,
       }
     } catch (error) {
       console.error("Error syncing pending operations:", error)
-      return { success: false, synced: 0, failed: 0, message: `Sync error: ${error.message}` }
+      return {
+        success: false,
+        synced: 0,
+        failed: 0,
+        message: `Sync error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: [
+          {
+            error: error instanceof Error ? error.message : "Unknown error",
+            stack: error instanceof Error ? error.stack : undefined,
+          },
+        ],
+      }
     }
   }
 

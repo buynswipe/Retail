@@ -4,9 +4,11 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Loader2, CheckCircle, XCircle, AlertCircle, ArrowLeft, Home } from "lucide-react"
 import Navbar from "../../components/navbar"
 import { TranslationProvider } from "../../components/translation-provider"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
 export default function PaymentStatusPage() {
   const router = useRouter()
@@ -16,6 +18,8 @@ export default function PaymentStatusPage() {
   const [orderId, setOrderId] = useState<string | null>(null)
   const [paymentId, setPaymentId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const [isPolling, setIsPolling] = useState(false)
 
   useEffect(() => {
     const fetchPaymentStatus = async () => {
@@ -44,6 +48,11 @@ export default function PaymentStatusPage() {
 
           // Verify the payment status with our backend
           const response = await fetch(`/api/payments/verify-status?orderId=${orderId}`)
+
+          if (!response.ok) {
+            throw new Error(`Failed to verify payment status: ${response.statusText}`)
+          }
+
           const data = await response.json()
 
           if (data.status !== status) {
@@ -53,9 +62,20 @@ export default function PaymentStatusPage() {
         } else {
           // If no status in URL, check with backend
           const response = await fetch(`/api/payments/verify-status?orderId=${orderId}`)
+
+          if (!response.ok) {
+            throw new Error(`Failed to verify payment status: ${response.statusText}`)
+          }
+
           const data = await response.json()
 
-          setStatus(data.status === "completed" ? "success" : data.status === "failed" ? "failure" : "pending")
+          // If payment is still pending, start polling
+          if (data.status === "pending") {
+            setStatus("pending")
+            setIsPolling(true)
+          } else {
+            setStatus(data.status === "completed" ? "success" : data.status === "failed" ? "failure" : "pending")
+          }
         }
 
         if (errorCode || errorMessage) {
@@ -66,13 +86,69 @@ export default function PaymentStatusPage() {
       } catch (error) {
         console.error("Error verifying payment status:", error)
         setStatus("pending")
-        setErrorMessage("Could not verify payment status")
+        setErrorMessage(error instanceof Error ? error.message : "Could not verify payment status")
         setIsLoading(false)
+
+        // Show toast for error
+        toast({
+          title: "Error",
+          description: "Failed to verify payment status. We'll keep trying.",
+          variant: "destructive",
+        })
       }
     }
 
     fetchPaymentStatus()
   }, [searchParams])
+
+  // Polling for pending payments
+  useEffect(() => {
+    if (!isPolling || !orderId) return
+
+    const MAX_RETRIES = 10
+    const POLLING_INTERVAL = 3000 // 3 seconds
+
+    const pollPaymentStatus = async () => {
+      try {
+        if (retryCount >= MAX_RETRIES) {
+          setIsPolling(false)
+          return
+        }
+
+        const response = await fetch(`/api/payments/verify-status?orderId=${orderId}`)
+
+        if (!response.ok) {
+          throw new Error(`Failed to verify payment status: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+
+        if (data.status !== "pending") {
+          setStatus(data.status === "completed" ? "success" : "failure")
+          setIsPolling(false)
+
+          // Show toast for status update
+          toast({
+            title: data.status === "completed" ? "Payment Successful" : "Payment Failed",
+            description:
+              data.status === "completed"
+                ? "Your payment has been processed successfully."
+                : "Your payment could not be processed.",
+            variant: data.status === "completed" ? "default" : "destructive",
+          })
+        } else {
+          setRetryCount((prev) => prev + 1)
+        }
+      } catch (error) {
+        console.error("Error polling payment status:", error)
+        setRetryCount((prev) => prev + 1)
+      }
+    }
+
+    const intervalId = setInterval(pollPaymentStatus, POLLING_INTERVAL)
+
+    return () => clearInterval(intervalId)
+  }, [isPolling, orderId, retryCount])
 
   const handleViewOrder = () => {
     if (orderId) {
@@ -84,6 +160,14 @@ export default function PaymentStatusPage() {
 
   const handleContinueShopping = () => {
     router.push("/retailer/browse")
+  }
+
+  const handleGoBack = () => {
+    router.back()
+  }
+
+  const handleGoHome = () => {
+    router.push("/retailer/dashboard")
   }
 
   return (
@@ -132,7 +216,11 @@ export default function PaymentStatusPage() {
                   <div className="py-8">
                     <AlertCircle className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
                     <h2 className="text-2xl font-bold text-yellow-600 mb-2">Payment Pending</h2>
-                    <p className="mb-6">Your payment is being processed. Please check your order status later.</p>
+                    <p className="mb-6">
+                      {isPolling
+                        ? `Your payment is being processed. We're checking the status... (${retryCount}/${10})`
+                        : "Your payment is being processed. Please check your order status later."}
+                    </p>
                     <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
                       <Button onClick={handleViewOrder}>View Order</Button>
                       <Button variant="outline" onClick={handleContinueShopping}>
@@ -141,10 +229,22 @@ export default function PaymentStatusPage() {
                     </div>
                   </div>
                 )}
+
+                <div className="mt-8 flex justify-between w-full">
+                  <Button variant="ghost" size="sm" onClick={handleGoBack}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleGoHome}>
+                    <Home className="mr-2 h-4 w-4" />
+                    Dashboard
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
         </main>
+        <Toaster />
       </div>
     </TranslationProvider>
   )

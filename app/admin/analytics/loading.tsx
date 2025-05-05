@@ -1,56 +1,97 @@
 import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Navbar from "@/app/components/navbar"
+import { TranslationProvider } from "@/app/components/translation-provider"
 
-export default function AnalyticsLoading() {
+export default function Loading() {
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <div className="flex justify-between items-center mb-8">
-        <Skeleton className="h-8 w-64" />
-        <div className="flex gap-2">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-48" />
-        </div>
-      </div>
+    <TranslationProvider>
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow pt-20 pb-20 px-4">
+          <div className="container mx-auto max-w-7xl">
+            <div className="flex justify-between items-center mb-8">
+              <Skeleton className="h-10 w-64" />
+              <Skeleton className="h-10 w-40" />
+            </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {Array(4)
-          .fill(0)
-          .map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <CardTitle>
-                  <Skeleton className="h-4 w-24" />
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-      </div>
+            <Tabs defaultValue="overview" className="space-y-4">
+              <TabsList className="grid grid-cols-5 w-full">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="orders">Orders</TabsTrigger>
+                <TabsTrigger value="revenue">Revenue</TabsTrigger>
+                <TabsTrigger value="users">Users</TabsTrigger>
+                <TabsTrigger value="products">Products</TabsTrigger>
+              </TabsList>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Skeleton className="h-5 w-32" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-[300px] w-full" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Skeleton className="h-5 w-32" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-[300px] w-full" />
-          </CardContent>
-        </Card>
+              <TabsContent value="overview" className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  {Array(4)
+                    .fill(0)
+                    .map((_, i) => (
+                      <Card key={i}>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-4 w-4 rounded-full" />
+                        </CardHeader>
+                        <CardContent>
+                          <Skeleton className="h-8 w-20" />
+                          <Skeleton className="h-4 w-full mt-2" />
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {Array(2)
+                    .fill(0)
+                    .map((_, i) => (
+                      <Card key={i}>
+                        <CardHeader>
+                          <Skeleton className="h-6 w-40" />
+                        </CardHeader>
+                        <CardContent>
+                          <Skeleton className="h-[300px] w-full" />
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {Array(2)
+                    .fill(0)
+                    .map((_, i) => (
+                      <Card key={i}>
+                        <CardHeader>
+                          <Skeleton className="h-6 w-40" />
+                        </CardHeader>
+                        <CardContent>
+                          <Skeleton className="h-[300px] w-full rounded-full" />
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-40" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {Array(5)
+                        .fill(0)
+                        .map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </main>
       </div>
-    </div>
+    </TranslationProvider>
   )
 }

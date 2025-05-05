@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from "./supabase-client"
+import { supabase } from "./supabase-client"
 import type { User, UserRole } from "./types"
 
 export interface UserUpdateData {
@@ -15,7 +15,6 @@ export interface UserUpdateData {
 // Get user by ID
 export async function getUserById(userId: string): Promise<{ data: User | null; error: any }> {
   try {
-    // Use regular client for getting own user data
     const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
 
     if (error) {
@@ -66,18 +65,13 @@ export async function updateUserProfile(
   }
 }
 
-// Get users by role - ADMIN FUNCTION
+// Get users by role
 export async function getUsersByRole(
   role: UserRole,
   isApproved?: boolean,
 ): Promise<{ data: User[] | null; error: any }> {
   try {
-    // Use admin client to bypass RLS
-    let query = supabaseAdmin.from("users").select("*")
-
-    if (role) {
-      query = query.eq("role", role)
-    }
+    let query = supabase.from("users").select("*").eq("role", role)
 
     if (isApproved !== undefined) {
       query = query.eq("is_approved", isApproved)
@@ -97,14 +91,13 @@ export async function getUsersByRole(
   }
 }
 
-// Approve or reject user - ADMIN FUNCTION
+// Approve or reject user
 export async function updateUserApprovalStatus(
   userId: string,
   isApproved: boolean,
 ): Promise<{ success: boolean; error: any }> {
   try {
-    // Use admin client to bypass RLS
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from("users")
       .update({
         is_approved: isApproved,
@@ -199,7 +192,7 @@ export async function searchUsers(searchTerm: string, role?: UserRole): Promise<
   }
 }
 
-// Get user statistics - ADMIN FUNCTION
+// Get user statistics
 export async function getUserStatistics(): Promise<{
   data: {
     total_users: number
@@ -211,8 +204,7 @@ export async function getUserStatistics(): Promise<{
   error: any
 }> {
   try {
-    // Use admin client to bypass RLS
-    const { count: totalUsers, error: totalError } = await supabaseAdmin
+    const { count: totalUsers, error: totalError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
 
@@ -221,7 +213,7 @@ export async function getUserStatistics(): Promise<{
       return { data: null, error: totalError }
     }
 
-    const { count: retailers, error: retailersError } = await supabaseAdmin
+    const { count: retailers, error: retailersError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "retailer")
@@ -231,7 +223,7 @@ export async function getUserStatistics(): Promise<{
       return { data: null, error: retailersError }
     }
 
-    const { count: wholesalers, error: wholesalersError } = await supabaseAdmin
+    const { count: wholesalers, error: wholesalersError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "wholesaler")
@@ -241,7 +233,7 @@ export async function getUserStatistics(): Promise<{
       return { data: null, error: wholesalersError }
     }
 
-    const { count: deliveryPartners, error: deliveryError } = await supabaseAdmin
+    const { count: deliveryPartners, error: deliveryError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("role", "delivery")
@@ -251,7 +243,7 @@ export async function getUserStatistics(): Promise<{
       return { data: null, error: deliveryError }
     }
 
-    const { count: pendingApprovals, error: pendingError } = await supabaseAdmin
+    const { count: pendingApprovals, error: pendingError } = await supabase
       .from("users")
       .select("*", { count: "exact", head: true })
       .eq("is_approved", false)

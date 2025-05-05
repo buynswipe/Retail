@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from "./supabase-client"
+import { supabase } from "./supabase-client"
 import type { Order, OrderItem, OrderStatus, PaymentStatus } from "./types"
 
 // Generate a unique order number
@@ -10,11 +10,10 @@ function generateOrderNumber(): string {
   return `ORD${timestamp}${random}`
 }
 
-// Get all orders - ADMIN FUNCTION
+// Get all orders
 export async function getAllOrders(): Promise<{ data: Order[] | null; error: any }> {
   try {
-    // Use admin client to bypass RLS
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("orders")
       .select(`
         *,
@@ -25,13 +24,13 @@ export async function getAllOrders(): Promise<{ data: Order[] | null; error: any
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching all orders:", error)
+      console.error("Error fetching orders:", error)
       return { data: null, error }
     }
 
     return { data, error: null }
   } catch (error) {
-    console.error("Error fetching all orders:", error)
+    console.error("Error fetching orders:", error)
     return { data: null, error }
   }
 }
@@ -1078,22 +1077,4 @@ export async function getRecentOrders(
 function isValidUUID(uuid: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   return uuidRegex.test(uuid)
-}
-
-// Export the order service as a named export
-export const orderService = {
-  getAllOrders,
-  getOrdersByRetailer,
-  getOrdersByWholesaler,
-  getOrderById,
-  getOrdersByRetailerId,
-  getOrdersByWholesalerId,
-  createOrder,
-  addOrderItems,
-  updateOrderStatus,
-  updatePaymentStatus,
-  getOrderStatistics,
-  cancelOrder,
-  getOrderHistory,
-  getRecentOrders,
 }

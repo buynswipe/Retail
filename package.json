@@ -60,16 +60,11 @@
     "zod": "latest",
     "jspdf": "latest",
     "country-flag-icons": "latest",
-    "uuid": "latest",
     "@supabase/supabase-js": "latest",
-    "fs": "latest",
-    "path": "latest",
-    "child_process": "latest",
-    "isomorphic-dompurify": "latest",
     "papaparse": "latest",
     "jspdf-autotable": "latest",
-    "crypto": "latest",
-    "dotenv": "latest"
+    "uuid": "latest",
+    "crypto": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

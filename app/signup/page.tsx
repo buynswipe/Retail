@@ -38,33 +38,20 @@ function SignupForm() {
     }
   }
 
-  const validatePhoneNumber = (phone: string): boolean => {
-    // Basic validation for Indian phone numbers (10 digits)
-    return /^[6-9]\d{9}$/.test(phone)
-  }
-
   const handleSendOtp = async () => {
     setIsLoading(true)
     setError("")
 
     try {
-      // Validate phone number format
-      if (!validatePhoneNumber(phoneNumber)) {
-        setError("Please enter a valid 10-digit phone number")
-        setIsLoading(false)
-        return
-      }
-
       // For signup, we don't need to check if user exists
-      // In a real app, this would call an API to send OTP
       setStep(2)
       toast({
         title: "OTP Sent",
         description: "A verification code has been sent to your WhatsApp.",
       })
     } catch (error) {
-      console.error("Error sending OTP:", error)
       setError("An unexpected error occurred. Please try again.")
+      console.error("Error sending OTP:", error)
     } finally {
       setIsLoading(false)
     }
@@ -75,51 +62,39 @@ function SignupForm() {
     setError("")
 
     try {
-      // Validate OTP format
-      if (!/^\d{6}$/.test(otp)) {
+      // For signup, we just verify the OTP format
+      if (otp.length === 6) {
+        setStep(3)
+      } else {
         setError("Invalid OTP. Please enter a 6-digit code.")
-        setIsLoading(false)
-        return
       }
-
-      // In a real app, this would verify the OTP with an API
-      // For demo purposes, we'll just proceed to the next step
-      setStep(3)
     } catch (error) {
+      setError("An unexpected error occurred. Please try again.")
       console.error("Error verifying OTP:", error)
-      setError("Failed to verify OTP. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
   const continueToOnboarding = async () => {
-    if (!role) {
-      setError("Please select a role to continue")
-      return
-    }
+    if (role) {
+      try {
+        // Register the user with basic info
+        const result = await signUp({
+          phone: phoneNumber,
+          role: role,
+        })
 
-    setIsLoading(true)
-    setError("")
-
-    try {
-      // Register the user with basic info
-      const result = await signUp({
-        phone: phoneNumber,
-        role: role,
-      })
-
-      if (result.success) {
-        // Redirect to specific onboarding flow based on role
-        router.push(`/onboarding/${role}`)
-      } else {
-        setError(result.error || "Failed to create account. Please try again.")
+        if (result.success) {
+          // Redirect to specific onboarding flow based on role
+          router.push(`/onboarding/${role}`)
+        } else {
+          setError(result.error || "Failed to create account. Please try again.")
+        }
+      } catch (error) {
+        setError("An unexpected error occurred. Please try again.")
+        console.error("Error creating account:", error)
       }
-    } catch (error) {
-      console.error("Error creating account:", error)
-      setError("An unexpected error occurred. Please try again.")
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -151,8 +126,6 @@ function SignupForm() {
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="9876543210"
                     className="text-xl h-16"
-                    maxLength={10}
-                    aria-invalid={error ? "true" : "false"}
                   />
                   <VoiceButton onText={handleVoiceInput} language={language} />
                 </div>
@@ -177,13 +150,11 @@ function SignupForm() {
                   <Input
                     id="otp"
                     type="text"
-                    inputMode="numeric"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    onChange={(e) => setOtp(e.target.value)}
                     placeholder="123456"
                     className="text-xl h-16"
                     maxLength={6}
-                    aria-invalid={error ? "true" : "false"}
                   />
                   <VoiceButton onText={handleVoiceInput} language={language} />
                 </div>
@@ -198,9 +169,6 @@ function SignupForm() {
 
               <div className="text-center mt-4">
                 <p className="text-lg">Enter any 6 digits as OTP for demo</p>
-                <Button variant="link" onClick={handleSendOtp} disabled={isLoading} className="mt-2">
-                  Resend OTP
-                </Button>
               </div>
             </>
           )}

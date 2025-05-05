@@ -21,24 +21,12 @@ const COMMON_AUTH_PATHS = ["/profile", "/notifications", "/notification-preferen
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Get response
-  const response = getResponse(request)
-
-  // Add security headers
-  addSecurityHeaders(response)
-
-  return response
-}
-
-function getResponse(request: NextRequest): NextResponse {
-  const { pathname } = request.nextUrl
-
-  // Skip API routes except health check
-  if (pathname.startsWith("/api/") && !pathname.startsWith("/api/health")) {
+  // Skip API routes
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next()
   }
 
-  // Get user info from cookies
+  // Get user info from cookies (in a real app, this would be a JWT token)
   const userRole = request.cookies.get("userRole")?.value
 
   // Handle role-specific paths
@@ -48,7 +36,7 @@ function getResponse(request: NextRequest): NextResponse {
       if (!userRole) {
         const url = request.nextUrl.clone()
         url.pathname = "/login"
-        url.searchParams.set("callbackUrl", encodeURIComponent(pathname))
+        url.searchParams.set("callbackUrl", pathname)
         return NextResponse.redirect(url)
       }
 
@@ -73,7 +61,7 @@ function getResponse(request: NextRequest): NextResponse {
   if (COMMON_AUTH_PATHS.includes(pathname) && !userRole) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
-    url.searchParams.set("callbackUrl", encodeURIComponent(pathname))
+    url.searchParams.set("callbackUrl", pathname)
     return NextResponse.redirect(url)
   }
 
@@ -101,48 +89,9 @@ function getResponse(request: NextRequest): NextResponse {
   return NextResponse.next()
 }
 
-function addSecurityHeaders(response: NextResponse): void {
-  // Basic security headers
-  response.headers.set("X-Content-Type-Options", "nosniff")
-  response.headers.set("X-Frame-Options", "DENY")
-  response.headers.set("X-XSS-Protection", "1; mode=block")
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
-  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
-
-  // Content Security Policy
-  // Generate a nonce for script execution (in a real app, this would be random per request)
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64")
-
-  const csp = [
-    // Default to nothing
-    "default-src 'none'",
-    // Allow self-hosted resources
-    "script-src 'self' 'unsafe-inline' https://vercel.live *.vercel.app",
-    "style-src 'self' 'unsafe-inline'",
-    // Connect sources for APIs
-    "connect-src 'self' https://*.supabase.co https://*.vercel-insights.com",
-    // Image sources
-    "img-src 'self' data: blob: https:",
-    // Font sources
-    "font-src 'self' https://fonts.gstatic.com",
-    // Form action destinations
-    "form-action 'self'",
-    // Frame sources
-    "frame-src 'self'",
-    // Manifest sources
-    "manifest-src 'self'",
-    // Media sources
-    "media-src 'self' blob:",
-    // Worker sources
-    "worker-src 'self' blob:",
-  ].join("; ")
-
-  response.headers.set("Content-Security-Policy", csp)
-}
-
 export const config = {
   matcher: [
-    // Match all paths except for specific static files
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg$).*)",
+    // Match all paths except for API routes that require authentication
+    "/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
   ],
 }

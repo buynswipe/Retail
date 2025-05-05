@@ -1,101 +1,151 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle, XCircle, Loader2 } from "lucide-react"
-import { verifyPayUCallback } from "@/lib/payment-service"
+import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import Navbar from "../../components/navbar"
+import { TranslationProvider } from "../../components/translation-provider"
 
 export default function PaymentStatusPage() {
-  const searchParams = useSearchParams()
   const router = useRouter()
-  const [status, setStatus] = useState<"loading" | "success" | "failure">("loading")
-  const [message, setMessage] = useState("Verifying payment status...")
+  const searchParams = useSearchParams()
+  const [isLoading, setIsLoading] = useState(true)
+  const [status, setStatus] = useState<"success" | "failure" | "pending" | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [paymentId, setPaymentId] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    const verifyPayment = async () => {
+    const fetchPaymentStatus = async () => {
       try {
-        // Get all params from the URL
-        const params: Record<string, string> = {}
-        searchParams.forEach((value, key) => {
-          params[key] = value
-        })
+        // Get parameters from URL
+        const status = searchParams.get("status")
+        const orderId = searchParams.get("orderId") || searchParams.get("udf1")
+        const txnId = searchParams.get("txnid")
+        const paymentId = searchParams.get("mihpayid")
+        const errorCode = searchParams.get("error")
+        const errorMessage = searchParams.get("error_Message")
 
-        // Extract key parameters
-        const txnId = params.txnid || ""
-        const orderIdParam = params.udf1 || "" // Assuming orderId is stored in udf1
-        setOrderId(orderIdParam)
+        if (!orderId) {
+          setErrorMessage("Missing order information")
+          setStatus("failure")
+          setIsLoading(false)
+          return
+        }
 
-        if (params.status === "success") {
-          // Verify the payment with our backend
-          const result = await verifyPayUCallback(params)
+        setOrderId(orderId)
+        setPaymentId(paymentId || txnId || null)
 
-          if (result.success) {
-            setStatus("success")
-            setMessage("Payment successful! Your order has been confirmed.")
-          } else {
-            setStatus("failure")
-            setMessage(result.error || "Payment verification failed. Please contact support.")
+        // If status is directly provided in URL (common for PayU redirects)
+        if (status === "success" || status === "failure") {
+          setStatus(status)
+
+          // Verify the payment status with our backend
+          const response = await fetch(`/api/payments/verify-status?orderId=${orderId}`)
+          const data = await response.json()
+
+          if (data.status !== status) {
+            console.warn("Payment status mismatch between URL and backend")
+            setStatus(data.status === "completed" ? "success" : data.status === "failed" ? "failure" : "pending")
           }
         } else {
-          setStatus("failure")
-          setMessage(params.error || "Payment failed. Please try again.")
+          // If no status in URL, check with backend
+          const response = await fetch(`/api/payments/verify-status?orderId=${orderId}`)
+          const data = await response.json()
+
+          setStatus(data.status === "completed" ? "success" : data.status === "failed" ? "failure" : "pending")
         }
+
+        if (errorCode || errorMessage) {
+          setErrorMessage(errorMessage || `Error code: ${errorCode}`)
+        }
+
+        setIsLoading(false)
       } catch (error) {
-        setStatus("failure")
-        setMessage("An error occurred while verifying the payment. Please contact support.")
-        console.error("Payment verification error:", error)
+        console.error("Error verifying payment status:", error)
+        setStatus("pending")
+        setErrorMessage("Could not verify payment status")
+        setIsLoading(false)
       }
     }
 
-    verifyPayment()
+    fetchPaymentStatus()
   }, [searchParams])
 
-  const handleContinue = () => {
-    if (status === "success" && orderId) {
+  const handleViewOrder = () => {
+    if (orderId) {
       router.push(`/retailer/orders/${orderId}`)
     } else {
       router.push("/retailer/orders")
     }
   }
 
+  const handleContinueShopping = () => {
+    router.push("/retailer/browse")
+  }
+
   return (
-    <div className="container mx-auto py-10 px-4 max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">
-            {status === "loading"
-              ? "Processing Payment"
-              : status === "success"
-                ? "Payment Successful"
-                : "Payment Failed"}
-          </CardTitle>
-          <CardDescription className="text-center">
-            {status === "loading"
-              ? "Please wait while we verify your payment"
-              : status === "success"
-                ? "Your transaction has been completed"
-                : "There was an issue with your payment"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-6">
-          {status === "loading" ? (
-            <Loader2 className="h-16 w-16 text-primary animate-spin" />
-          ) : status === "success" ? (
-            <CheckCircle className="h-16 w-16 text-green-500" />
-          ) : (
-            <XCircle className="h-16 w-16 text-red-500" />
-          )}
-          <p className="mt-4 text-center">{message}</p>
-        </CardContent>
-        <CardFooter>
-          <Button onClick={handleContinue} className="w-full" disabled={status === "loading"}>
-            {status === "success" ? "View Order" : "Go to Orders"}
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
+    <TranslationProvider>
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow pt-20 pb-20 px-4">
+          <div className="container mx-auto max-w-md">
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl">Payment Status</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center text-center">
+                {isLoading ? (
+                  <div className="py-8">
+                    <Loader2 className="h-16 w-16 animate-spin text-blue-500 mx-auto mb-4" />
+                    <p className="text-lg">Verifying payment status...</p>
+                  </div>
+                ) : status === "success" ? (
+                  <div className="py-8">
+                    <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-green-600 mb-2">Payment Successful</h2>
+                    <p className="mb-6">Your payment has been processed successfully.</p>
+                    {paymentId && <p className="text-sm text-gray-500 mb-6">Payment Reference: {paymentId}</p>}
+                    <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
+                      <Button onClick={handleViewOrder}>View Order</Button>
+                      <Button variant="outline" onClick={handleContinueShopping}>
+                        Continue Shopping
+                      </Button>
+                    </div>
+                  </div>
+                ) : status === "failure" ? (
+                  <div className="py-8">
+                    <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-red-600 mb-2">Payment Failed</h2>
+                    <p className="mb-2">Your payment could not be processed.</p>
+                    {errorMessage && <p className="text-sm text-red-500 mb-6">Reason: {errorMessage}</p>}
+                    <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
+                      <Button onClick={handleViewOrder}>View Order</Button>
+                      <Button variant="outline" onClick={handleContinueShopping}>
+                        Continue Shopping
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-8">
+                    <AlertCircle className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-yellow-600 mb-2">Payment Pending</h2>
+                    <p className="mb-6">Your payment is being processed. Please check your order status later.</p>
+                    <div className="flex flex-col gap-3 w-full max-w-xs mx-auto">
+                      <Button onClick={handleViewOrder}>View Order</Button>
+                      <Button variant="outline" onClick={handleContinueShopping}>
+                        Continue Shopping
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    </TranslationProvider>
   )
 }

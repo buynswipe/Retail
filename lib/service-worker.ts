@@ -1,15 +1,5 @@
 export function registerServiceWorker() {
   if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-    // Check if we're in the v0 preview environment
-    const isV0Preview =
-      window.location.hostname.includes("vusercontent.net") || window.location.hostname.includes("v0.dev")
-
-    // Skip service worker registration in v0 preview environment
-    if (isV0Preview) {
-      console.log("Service Worker registration skipped in v0 preview environment")
-      return
-    }
-
     window.addEventListener("load", () => {
       navigator.serviceWorker
         .register("/sw.js")
@@ -60,9 +50,7 @@ export function registerServiceWorker() {
 export function checkOnlineStatus(): boolean {
   if (typeof window !== "undefined") {
     // In v0 preview, always return true to avoid offline-related issues
-    const isV0Preview =
-      window.location.hostname.includes("vusercontent.net") || window.location.hostname.includes("v0.dev")
-
+    const isV0Preview = window.location.hostname.includes("vusercontent.net")
     if (isV0Preview) {
       return true
     }
@@ -105,14 +93,6 @@ export function updateFetchStatus(success: boolean): void {
 export function checkOfflineCapability(): boolean {
   if (typeof window === "undefined") return false
 
-  // In v0 preview, return false to avoid offline-related issues
-  const isV0Preview =
-    window.location.hostname.includes("vusercontent.net") || window.location.hostname.includes("v0.dev")
-
-  if (isV0Preview) {
-    return false
-  }
-
   // Check if service worker is supported and registered
   const isServiceWorkerRegistered = "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller)
 
@@ -127,13 +107,7 @@ export function checkOfflineCapability(): boolean {
 
 // Function to prefetch critical resources
 export async function prefetchCriticalResources(resources: string[]) {
-  // Skip in v0 preview environment
-  if (typeof window === "undefined") return
-
-  const isV0Preview =
-    window.location.hostname.includes("vusercontent.net") || window.location.hostname.includes("v0.dev")
-
-  if (isV0Preview || !("caches" in window)) return
+  if (!("caches" in window)) return
 
   try {
     const cache = await caches.open("critical-resources")
@@ -147,12 +121,6 @@ export async function prefetchCriticalResources(resources: string[]) {
 // Function to request background sync for offline operations
 export async function requestBackgroundSync(tag = "sync-pending-operations"): Promise<boolean> {
   if (typeof window === "undefined") return false
-
-  // Skip in v0 preview environment
-  const isV0Preview =
-    window.location.hostname.includes("vusercontent.net") || window.location.hostname.includes("v0.dev")
-
-  if (isV0Preview) return false
 
   // Check if service worker and background sync are supported
   if (!("serviceWorker" in navigator) || !("SyncManager" in window)) {

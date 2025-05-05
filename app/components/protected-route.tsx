@@ -5,71 +5,51 @@ import type React from "react"
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import type { UserRole } from "@/lib/types"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRole?: string | string[]
+  allowedRoles?: UserRole[]
+  fallbackPath?: string
 }
 
-export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, allowedRoles, fallbackPath = "/login" }: ProtectedRouteProps) {
   const { user, isLoading, isAuthenticated } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    // Only run this check after the initial loading is complete
-    if (!isLoading) {
-      // If not authenticated, redirect to login
-      if (!isAuthenticated) {
-        router.push("/login")
-        return
-      }
-
-      // If role check is required
-      if (requiredRole && user) {
-        const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole]
-
-        // If user doesn't have the required role
-        if (!roles.includes(user.role)) {
-          // Redirect to their appropriate dashboard
-          switch (user.role) {
-            case "retailer":
-              router.push("/retailer/dashboard")
-              break
-            case "wholesaler":
-              router.push("/wholesaler/dashboard")
-              break
-            case "delivery":
-              router.push("/delivery/dashboard")
-              break
-            case "admin":
-              router.push("/admin/dashboard")
-              break
-            default:
-              router.push("/login")
-          }
-        }
-      }
+    if (!isLoading && !isAuthenticated) {
+      router.push(fallbackPath)
+      return
     }
-  }, [isLoading, isAuthenticated, user, requiredRole, router])
 
-  // Show nothing while checking authentication
+    if (!isLoading && user && allowedRoles && !allowedRoles.includes(user.role)) {
+      // Redirect to dashboard if user doesn't have the required role
+      router.push(`/${user.role}/dashboard`)
+    }
+  }, [isLoading, isAuthenticated, user, allowedRoles, router, fallbackPath])
+
   if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+    return (
+      <div className="flex flex-col space-y-4 p-8">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      </div>
+    )
   }
 
-  // If not authenticated after loading, don't render children
-  if (!isAuthenticated && !isLoading) {
-    return null
+  if (!isAuthenticated) {
+    return null // Will redirect in useEffect
   }
 
-  // If role is required and user doesn't have it, don't render
-  if (requiredRole && user) {
-    const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole]
-    if (!roles.includes(user.role)) {
-      return null
-    }
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return null // Will redirect in useEffect
   }
 
-  // Otherwise render the protected content
   return <>{children}</>
 }

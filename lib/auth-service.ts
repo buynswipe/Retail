@@ -182,31 +182,47 @@ export async function getCurrentUser(): Promise<UserData | null> {
   try {
     // In a real app, this would use Supabase Auth
     // For now, we'll check localStorage
-    const storedUser = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null
+    if (typeof window === "undefined") return null
+
+    const storedUser = localStorage.getItem("currentUser")
     if (!storedUser) return null
 
-    return JSON.parse(storedUser) as UserData
+    const userData = JSON.parse(storedUser) as UserData
+
+    // Validate the user data
+    if (!userData.id || !userData.phone_number || !userData.role) {
+      console.warn("Invalid user data found in localStorage")
+      localStorage.removeItem("currentUser")
+      return null
+    }
+
+    return userData
   } catch (error) {
     console.error("Error getting current user:", error)
+    localStorage.removeItem("currentUser")
     return null
   }
 }
 
 // Sign out
-export async function signOut() {
+export async function signOut(): Promise<{ success: boolean; error?: any }> {
   try {
     // Call Supabase signOut
     const { error } = await supabase.auth.signOut()
 
     if (error) {
-      throw error
+      console.error("Error signing out from Supabase:", error)
     }
 
     // Clear any local storage or cookies related to authentication
-    localStorage.removeItem("auth_user")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("currentUser")
+      localStorage.removeItem("auth_user")
 
-    // Clear any other auth-related data
-    document.cookie = "userRole=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
+      // Clear any other auth-related data
+      document.cookie = "userRole=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
+      document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
+    }
 
     return { success: true }
   } catch (error) {
@@ -258,5 +274,31 @@ export async function updateUserProfile(
   } catch (error) {
     console.error("Error updating user profile:", error)
     return { success: false, error: "Failed to update profile. Please try again." }
+  }
+}
+
+/**
+ * Check if a user session is valid
+ * This is useful for middleware and client-side authentication checks
+ */
+export async function isSessionValid(): Promise<boolean> {
+  try {
+    // In a real app with Supabase Auth, we would check the session
+    // For now, we'll check localStorage
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null
+    if (!storedUser) return false
+
+    // Check if the stored user data is valid
+    const userData = JSON.parse(storedUser) as UserData
+    if (!userData.id || !userData.phone_number || !userData.role) {
+      return false
+    }
+
+    // In a real app, we would validate the session with the backend
+    // For now, we'll just return true if we have valid user data
+    return true
+  } catch (error) {
+    console.error("Error checking session validity:", error)
+    return false
   }
 }

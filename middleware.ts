@@ -18,7 +18,7 @@ const ROLE_PATH_PATTERNS = {
 // Define common paths that are accessible to all authenticated users
 const COMMON_AUTH_PATHS = ["/profile", "/notifications", "/notification-preferences", "/chat"]
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Skip API routes
@@ -26,8 +26,25 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Skip static assets and public files
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/favicon.ico") ||
+    pathname.startsWith("/manifest.json") ||
+    pathname.startsWith("/robots.txt") ||
+    pathname.startsWith("/sitemap.xml")
+  ) {
+    return NextResponse.next()
+  }
+
   // Get user info from cookies (in a real app, this would be a JWT token)
   const userRole = request.cookies.get("userRole")?.value
+
+  // Public paths that don't require authentication
+  const publicPaths = ["/", "/login", "/signup", "/about", "/faq", "/help", "/contact", "/privacy", "/terms"]
+  if (publicPaths.includes(pathname)) {
+    return NextResponse.next()
+  }
 
   // Handle role-specific paths
   for (const [role, pattern] of Object.entries(ROLE_PATH_PATTERNS)) {

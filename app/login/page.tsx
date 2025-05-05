@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,22 @@ function LoginForm() {
   // Voice input functionality
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState("")
+  const [isOffline, setIsOffline] = useState(false)
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    setIsOffline(!navigator.onLine)
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
 
   const startListening = () => {
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
@@ -90,7 +106,12 @@ function LoginForm() {
         description: "A verification code has been sent to your WhatsApp.",
       })
     } catch (error) {
-      setError("Failed to send OTP. Please try again.")
+      setError(error instanceof Error ? error.message : "Failed to send OTP. Please try again.")
+      toast({
+        title: "Error",
+        description: "Failed to send OTP. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -176,6 +197,14 @@ function LoginForm() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          {isOffline && (
+            <Alert variant="warning" className="mb-4">
+              <AlertTitle>{t("You are offline")}</AlertTitle>
+              <AlertDescription>
+                {t("Some features may be limited until you reconnect to the internet.")}
+              </AlertDescription>
+            </Alert>
+          )}
 
           {!otpSent ? (
             <div className="space-y-4">
@@ -191,12 +220,25 @@ function LoginForm() {
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     className="flex-1"
+                    aria-describedby="phone-hint"
+                    inputMode="numeric"
+                    pattern="[0-9]{10}"
                   />
-                  <Button type="button" variant="outline" size="icon" className="ml-2" onClick={startListening}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="ml-2"
+                    onClick={startListening}
+                    aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                  >
                     <Mic className={isListening ? "text-red-500" : ""} />
                     <span className="sr-only">{t("Use voice input")}</span>
                   </Button>
                 </div>
+                <p id="phone-hint" className="text-xs text-gray-500 mt-1">
+                  {t("Enter a 10-digit phone number")}
+                </p>
               </div>
               <Button className="w-full" onClick={handleSendOtp} disabled={isLoading || phoneNumber.length !== 10}>
                 {isLoading ? t("Sending...") : t("send.otp")}
